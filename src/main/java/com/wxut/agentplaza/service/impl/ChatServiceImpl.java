@@ -1,6 +1,7 @@
 package com.wxut.agentplaza.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wxut.agentplaza.common.PageResult;
 import com.wxut.agentplaza.dto.ChatMessageDTO;
@@ -41,7 +42,7 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public PageResult<ChatSessionVO> listSessions(Long userId, int page, int size) {
-        Page<ChatSession> result = sessionMapper.selectPage(new Page<>(page, size),
+        IPage<ChatSession> result = sessionMapper.selectPage(new Page<>(page, size),
                 new LambdaQueryWrapper<ChatSession>().eq(ChatSession::getUserId, userId).orderByDesc(ChatSession::getUpdatedAt));
         List<ChatSessionVO> vos = result.getRecords().stream().map(this::toSessionVO).collect(Collectors.toList());
         PageResult<ChatSessionVO> pr = new PageResult<>();
@@ -89,7 +90,7 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public PageResult<ChatMessageVO> listMessages(String sessionId, int page, int size) {
-        Page<ChatMessage> result = messageMapper.selectPage(new Page<>(page, size),
+        IPage<ChatMessage> result = messageMapper.selectPage(new Page<>(page, size),
                 new LambdaQueryWrapper<ChatMessage>().eq(ChatMessage::getSessionId, sessionId).orderByAsc(ChatMessage::getCreatedAt));
         PageResult<ChatMessageVO> pr = new PageResult<>();
         pr.setRecords(result.getRecords().stream().map(this::toMessageVO).collect(Collectors.toList()));

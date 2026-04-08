@@ -1,10 +1,12 @@
 package com.wxut.agentplaza.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wxut.agentplaza.common.PageResult;
 import com.wxut.agentplaza.dto.ModelQueryDTO;
 import com.wxut.agentplaza.entity.Model;
+import java.util.Collections;
 import com.wxut.agentplaza.entity.ModelTag;
 import com.wxut.agentplaza.exception.BusinessException;
 import com.wxut.agentplaza.mapper.ModelMapper;
@@ -28,7 +30,7 @@ public class ModelServiceImpl implements ModelService {
     @Override
     public PageResult<ModelVO> search(ModelQueryDTO dto) {
         Page<Model> page = new Page<>(dto.getPage(), dto.getSize());
-        Page<Model> result = modelMapper.searchModels(page, dto.getCategory(), dto.getKeyword());
+        IPage<Model> result = modelMapper.searchModels(page, dto.getCategory(), dto.getKeyword());
         Map<Long, List<String>> tagMap = getTagMap(result.getRecords());
         List<ModelVO> vos = result.getRecords().stream().map(m -> toModelVO(m, tagMap)).collect(Collectors.toList());
         PageResult<ModelVO> pr = new PageResult<>();
@@ -43,7 +45,7 @@ public class ModelServiceImpl implements ModelService {
     public ModelVO getDetail(Long id) {
         Model model = modelMapper.selectById(id);
         if (model == null) throw new BusinessException("模型不存在");
-        return toModelVO(model, getTagMap(List.of(model)));
+        return toModelVO(model, getTagMap(Collections.singletonList(model)));
     }
 
     @Override
@@ -97,7 +99,7 @@ public class ModelServiceImpl implements ModelService {
     }
 
     private Map<Long, List<String>> getTagMap(List<Model> models) {
-        if (models.isEmpty()) return Map.of();
+        if (models.isEmpty()) return Collections.emptyMap();
         List<Long> ids = models.stream().map(Model::getId).collect(Collectors.toList());
         List<ModelTag> allTags = modelTagMapper.selectList(
                 new LambdaQueryWrapper<ModelTag>().in(ModelTag::getModelId, ids));
@@ -117,7 +119,7 @@ public class ModelServiceImpl implements ModelService {
         vo.setApiDocsUrl(m.getApiDocsUrl());
         vo.setTryoutUrl(m.getTryoutUrl());
         vo.setIconUrl(m.getIconUrl());
-        vo.setTags(tagMap.getOrDefault(m.getId(), List.of()));
+        vo.setTags(tagMap.getOrDefault(m.getId(), Collections.emptyList()));
         return vo;
     }
 }

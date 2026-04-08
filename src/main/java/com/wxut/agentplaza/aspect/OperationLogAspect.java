@@ -4,7 +4,7 @@ import com.wxut.agentplaza.annotation.OperationLog;
 import com.wxut.agentplaza.entity.SysOperationLog;
 import com.wxut.agentplaza.service.SysOperationLogService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -40,8 +40,8 @@ public class OperationLogAspect {
     private void saveLog(ProceedingJoinPoint point, String operation) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         SysOperationLog log = new SysOperationLog();
-        if (auth != null && auth.getPrincipal() instanceof Long userId) {
-            log.setUserId(userId);
+        if (auth != null && auth.getPrincipal() instanceof Long) {
+            log.setUserId((Long) auth.getPrincipal());
             log.setUsername(auth.getName());
         }
         log.setOperation(operation);

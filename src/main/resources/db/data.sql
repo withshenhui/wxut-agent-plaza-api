@@ -2,7 +2,8 @@ USE agent_plaza;
 
 -- Admin user (password: admin123)
 INSERT INTO sys_user (username, password, nickname, role, status) VALUES
-('admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '管理员', 'admin', 1);
+('admin', '$2b$10$U0WmDcpPmpBhIIzv.4avn.ZWLRJrgG//VuGZ0bv7zWZDtiQuY7jy2', '管理员', 'admin', 1)
+ON DUPLICATE KEY UPDATE password = VALUES(password);
 
 -- Categories
 INSERT INTO agent_category (category_key, label, description, sort_order, status) VALUES

@@ -1,10 +1,12 @@
 package com.wxut.agentplaza.service.impl;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.wxut.agentplaza.common.PageResult;
 import com.wxut.agentplaza.dto.AgentCreateDTO;
 import com.wxut.agentplaza.dto.AgentQueryDTO;
 import com.wxut.agentplaza.entity.Agent;
+import java.util.Collections;
 import com.wxut.agentplaza.entity.AgentCategory;
 import com.wxut.agentplaza.entity.AgentTag;
 import com.wxut.agentplaza.exception.BusinessException;
@@ -33,7 +35,7 @@ public class AgentServiceImpl implements AgentService {
     @Override
     public PageResult<AgentVO> search(AgentQueryDTO dto) {
         Page<Agent> page = new Page<>(dto.getPage(), dto.getSize());
-        Page<Agent> result = agentMapper.searchAgents(page, dto.getCategoryId(), dto.getKeyword());
+        IPage<Agent> result = agentMapper.searchAgents(page, dto.getCategoryId(), dto.getKeyword());
         Map<Long, String> categoryMap = getCategoryMap();
         Map<Long, List<String>> tagMap = getTagMap(result.getRecords());
         List<AgentVO> vos = result.getRecords().stream().map(a -> toAgentVO(a, categoryMap, tagMap)).collect(Collectors.toList());
@@ -140,7 +142,7 @@ public class AgentServiceImpl implements AgentService {
     }
 
     private Map<Long, List<String>> getTagMap(List<Agent> agents) {
-        if (agents.isEmpty()) return Map.of();
+        if (agents.isEmpty()) return Collections.emptyMap();
         List<Long> ids = agents.stream().map(Agent::getId).collect(Collectors.toList());
         List<AgentTag> allTags = agentTagMapper.selectList(
                 new LambdaQueryWrapper<AgentTag>().in(AgentTag::getAgentId, ids));
@@ -154,7 +156,7 @@ public class AgentServiceImpl implements AgentService {
         vo.setName(a.getName());
         vo.setIcon(a.getIcon());
         vo.setDescription(a.getDescription());
-        vo.setTags(tagMap.getOrDefault(a.getId(), List.of()));
+        vo.setTags(tagMap.getOrDefault(a.getId(), Collections.emptyList()));
         vo.setIsRecommended(a.getIsRecommended());
         vo.setVisitCount(a.getVisitCount());
         if (a.getCategoryId() != null) {

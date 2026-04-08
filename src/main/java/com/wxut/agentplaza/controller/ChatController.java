@@ -8,7 +8,7 @@ import com.wxut.agentplaza.vo.ChatMessageVO;
 import com.wxut.agentplaza.vo.ChatSessionVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
+import javax.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
