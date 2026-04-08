@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.wxut.agentplaza.mapper.ModelMapper">
+    <select id="searchModels" resultType="com.wxut.agentplaza.entity.Model">
+        SELECT DISTINCT m.* FROM model m
+        LEFT JOIN model_tag mt ON m.id = mt.model_id
+        WHERE m.status = 1
+        <if test="category != null and category != ''">
+            AND m.category = #{category}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (m.name LIKE CONCAT('%', #{keyword}, '%')
+                 OR m.description LIKE CONCAT('%', #{keyword}, '%')
+                 OR m.provider LIKE CONCAT('%', #{keyword}, '%')
+                 OR mt.tag_name LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY m.sort_order ASC, m.id ASC
+    </select>
+</mapper>
