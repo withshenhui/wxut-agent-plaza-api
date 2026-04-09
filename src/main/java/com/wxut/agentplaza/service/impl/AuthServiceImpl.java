@@ -90,4 +90,24 @@ public class AuthServiceImpl implements AuthService {
         info.setRole(user.getRole());
         return info;
     }
+
+    @Override
+    public SysUser findOrCreateCasUser(String uid, String cn) {
+        SysUser user = userMapper.selectOne(
+                new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, uid));
+        if (user != null) {
+            if (user.getStatus() == 0) {
+                throw new BusinessException("账号已被禁用");
+            }
+            return user;
+        }
+        user = new SysUser();
+        user.setUsername(uid);
+        user.setNickname(cn != null ? cn : uid);
+        user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+        user.setRole("user");
+        user.setStatus(1);
+        userMapper.insert(user);
+        return user;
+    }
 }

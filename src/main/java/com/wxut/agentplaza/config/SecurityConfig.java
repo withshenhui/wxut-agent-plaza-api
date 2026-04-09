@@ -2,6 +2,10 @@ package com.wxut.agentplaza.config;
 
 import com.wxut.agentplaza.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.jasig.cas.client.authentication.AuthenticationFilter;
+import org.jasig.cas.client.util.HttpServletRequestWrapperFilter;
+import org.jasig.cas.client.validation.Cas20ProxyReceivingTicketValidationFilter;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -23,6 +27,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final CasConfig casConfig;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -31,7 +36,7 @@ public class SecurityConfig {
             .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             .and()
             .authorizeRequests()
-                .antMatchers("/api/v1/auth/login", "/api/v1/auth/register").permitAll()
+                .antMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/cas-login", "/api/v1/auth/cas-login-url").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/agents/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/models/**").permitAll()
@@ -55,6 +60,39 @@ public class SecurityConfig {
             .and()
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    @Bean
+    public FilterRegistrationBean<AuthenticationFilter> casAuthenticationFilter() {
+        FilterRegistrationBean<AuthenticationFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new AuthenticationFilter());
+        registration.addUrlPatterns("/api/v1/auth/cas-login");
+        registration.addInitParameter("casServerLoginUrl", casConfig.getServerLoginUrl());
+        registration.addInitParameter("serverName", casConfig.getClientServerUrl());
+        registration.setOrder(1);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<Cas20ProxyReceivingTicketValidationFilter> casValidationFilter() {
+        FilterRegistrationBean<Cas20ProxyReceivingTicketValidationFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new Cas20ProxyReceivingTicketValidationFilter());
+        registration.addUrlPatterns("/api/v1/auth/cas-login");
+        registration.addInitParameter("casServerUrlPrefix", casConfig.getServerUrlPrefix());
+        registration.addInitParameter("serverName", casConfig.getClientServerUrl());
+        registration.addInitParameter("redirectAfterValidation", "false");
+        registration.addInitParameter("encoding", "UTF-8");
+        registration.setOrder(2);
+        return registration;
+    }
+
+    @Bean
+    public FilterRegistrationBean<HttpServletRequestWrapperFilter> casWrapperFilter() {
+        FilterRegistrationBean<HttpServletRequestWrapperFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new HttpServletRequestWrapperFilter());
+        registration.addUrlPatterns("/api/v1/auth/cas-login");
+        registration.setOrder(3);
+        return registration;
     }
 
     @Bean

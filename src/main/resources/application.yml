@@ -1,5 +1,5 @@
 server:
-  port: 8080
+  port: 3001
 
 spring:
   application:
@@ -31,6 +31,12 @@ jwt:
   expiration: 86400000
   header: Authorization
   prefix: "Bearer "
+
+cas:
+  server-login-url: https://ids.wxit.edu.cn/authserver/login
+  server-url-prefix: https://ids.wxit.edu.cn/authserver
+  client-server-url: http://210.28.145.186:3001
+  front-end-url: http://210.28.145.186:3001
 
 file:
   upload-dir: ./uploads
