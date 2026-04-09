@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 public class CasConfig {
     private String serverLoginUrl;
     private String serverUrlPrefix;
+    private String serverLogoutUrl;
     private String clientServerUrl;
     private String frontEndUrl;
 }

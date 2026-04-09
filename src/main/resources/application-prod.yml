@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:mysql://210.28.145.xxx:3306/agent_plaza?useUnicode=true&characterEncoding=UTF-8&useSSL=true&serverTimezone=Asia/Shanghai
-    username: agent_plaza
-    password: ${DB_PASSWORD}
+    url: jdbc:mysql://210.28.144.91:3306/agent_plaza?useUnicode=true&characterEncoding=UTF-8&useSSL=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: Shenhui@123
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 20
@@ -14,6 +14,10 @@ spring:
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
+
+cas:
+  client-server-url: http://210.28.145.186:3001/agent-plaza
+  front-end-url: http://210.28.145.186:3001/agent-plaza
 
 logging:
   level:

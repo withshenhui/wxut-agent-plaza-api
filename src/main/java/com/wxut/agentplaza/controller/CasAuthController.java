@@ -33,6 +33,11 @@ public class CasAuthController {
         return Result.success(casLoginUrl);
     }
 
+    @GetMapping("/cas-logout-url")
+    public Result<String> getCasLogoutUrl() {
+        return Result.success(casConfig.getServerLogoutUrl());
+    }
+
     @GetMapping("/cas-login")
     public void casLogin(HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");

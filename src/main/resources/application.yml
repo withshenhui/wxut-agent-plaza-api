@@ -35,6 +35,7 @@ jwt:
 cas:
   server-login-url: https://ids.wxit.edu.cn/authserver/login
   server-url-prefix: https://ids.wxit.edu.cn/authserver
+  server-logout-url: https://ids.wxit.edu.cn/authserver/logout
   client-server-url: http://210.28.145.186:3001
   front-end-url: http://210.28.145.186:3001
 
