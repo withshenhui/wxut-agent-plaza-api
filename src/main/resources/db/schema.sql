@@ -4,7 +4,7 @@ CREATE DATABASE IF NOT EXISTS agent_plaza
 
 USE agent_plaza;
 
-CREATE TABLE sys_user (
+CREATE TABLE IF NOT EXISTS sys_user (
     id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT 'PK',
     username     VARCHAR(50)  NOT NULL COMMENT '登录用户名',
     password     VARCHAR(255) NOT NULL COMMENT 'BCrypt加密密码',
@@ -20,7 +20,7 @@ CREATE TABLE sys_user (
     UNIQUE KEY uk_username (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统用户';
 
-CREATE TABLE agent_category (
+CREATE TABLE IF NOT EXISTS agent_category (
     id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT 'PK',
     category_key VARCHAR(50)  NOT NULL COMMENT '分类唯一标识',
     label        VARCHAR(100) NOT NULL COMMENT '显示名称',
@@ -34,7 +34,7 @@ CREATE TABLE agent_category (
     UNIQUE KEY uk_category_key (category_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='智能体分类';
 
-CREATE TABLE agent (
+CREATE TABLE IF NOT EXISTS agent (
     id             BIGINT       NOT NULL AUTO_INCREMENT COMMENT 'PK',
     name           VARCHAR(100) NOT NULL COMMENT '智能体名称',
     icon           VARCHAR(10)  DEFAULT NULL COMMENT 'Emoji图标',
@@ -55,7 +55,7 @@ CREATE TABLE agent (
         REFERENCES agent_category(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='智能体';
 
-CREATE TABLE agent_tag (
+CREATE TABLE IF NOT EXISTS agent_tag (
     id        BIGINT      NOT NULL AUTO_INCREMENT COMMENT 'PK',
     agent_id  BIGINT      NOT NULL COMMENT 'FK -> agent.id',
     tag_name  VARCHAR(50) NOT NULL COMMENT '标签名',
@@ -65,7 +65,7 @@ CREATE TABLE agent_tag (
         REFERENCES agent(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='智能体标签';
 
-CREATE TABLE chat_session (
+CREATE TABLE IF NOT EXISTS chat_session (
     id         VARCHAR(36)  NOT NULL COMMENT '会话UUID',
     agent_id   BIGINT       NOT NULL COMMENT 'FK -> agent.id',
     user_id    BIGINT       NOT NULL COMMENT 'FK -> sys_user.id',
@@ -81,7 +81,7 @@ CREATE TABLE chat_session (
         REFERENCES sys_user(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天会话';
 
-CREATE TABLE chat_message (
+CREATE TABLE IF NOT EXISTS chat_message (
     id         BIGINT   NOT NULL AUTO_INCREMENT COMMENT 'PK',
     session_id VARCHAR(36) NOT NULL COMMENT 'FK -> chat_session.id',
     sender     VARCHAR(20) NOT NULL COMMENT '发送者: user/agent',
@@ -93,7 +93,7 @@ CREATE TABLE chat_message (
         REFERENCES chat_session(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='聊天消息';
 
-CREATE TABLE model (
+CREATE TABLE IF NOT EXISTS model (
     id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT 'PK',
     name          VARCHAR(100) NOT NULL COMMENT '模型名称',
     provider      VARCHAR(100) DEFAULT NULL COMMENT '提供商',
@@ -113,7 +113,7 @@ CREATE TABLE model (
     KEY idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='AI模型';
 
-CREATE TABLE model_tag (
+CREATE TABLE IF NOT EXISTS model_tag (
     id        BIGINT      NOT NULL AUTO_INCREMENT COMMENT 'PK',
     model_id  BIGINT      NOT NULL COMMENT 'FK -> model.id',
     tag_name  VARCHAR(50) NOT NULL COMMENT '标签名',
@@ -123,7 +123,7 @@ CREATE TABLE model_tag (
         REFERENCES model(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='模型标签';
 
-CREATE TABLE sys_config (
+CREATE TABLE IF NOT EXISTS sys_config (
     id           BIGINT       NOT NULL AUTO_INCREMENT COMMENT 'PK',
     config_key   VARCHAR(100) NOT NULL COMMENT '配置键',
     config_value TEXT         DEFAULT NULL COMMENT '配置值',
@@ -134,7 +134,7 @@ CREATE TABLE sys_config (
     UNIQUE KEY uk_config_key (config_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='系统配置';
 
-CREATE TABLE sys_operation_log (
+CREATE TABLE IF NOT EXISTS sys_operation_log (
     id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT 'PK',
     user_id     BIGINT       DEFAULT NULL COMMENT '操作用户ID',
     username    VARCHAR(50)  DEFAULT NULL COMMENT '操作用户名',
@@ -148,7 +148,7 @@ CREATE TABLE sys_operation_log (
     KEY idx_create_time (create_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='操作日志';
 
-CREATE TABLE sys_file (
+CREATE TABLE IF NOT EXISTS sys_file (
     id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT 'PK',
     original_name   VARCHAR(255) DEFAULT NULL COMMENT '原始文件名',
     stored_name     VARCHAR(255) DEFAULT NULL COMMENT '存储文件名',

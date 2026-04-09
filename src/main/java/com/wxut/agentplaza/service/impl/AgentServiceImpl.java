@@ -96,6 +96,7 @@ public class AgentServiceImpl implements AgentService {
         agent.setExternalUrl(dto.getExternalUrl());
         agent.setIsRecommended(dto.getIsRecommended() != null ? dto.getIsRecommended() : 0);
         agent.setSortOrder(dto.getSortOrder() != null ? dto.getSortOrder() : 0);
+        agent.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
         agentMapper.insert(agent);
         saveTags(agent.getId(), dto.getTags());
     }
@@ -113,6 +114,7 @@ public class AgentServiceImpl implements AgentService {
         agent.setExternalUrl(dto.getExternalUrl());
         agent.setIsRecommended(dto.getIsRecommended());
         agent.setSortOrder(dto.getSortOrder());
+        agent.setStatus(dto.getStatus());
         agentMapper.updateById(agent);
         agentTagMapper.delete(new LambdaQueryWrapper<AgentTag>().eq(AgentTag::getAgentId, id));
         saveTags(id, dto.getTags());

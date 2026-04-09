@@ -15,6 +15,7 @@
     <groupId>com.wxut</groupId>
     <artifactId>agent-plaza</artifactId>
     <version>1.0.0</version>
+    <packaging>war</packaging>
     <name>wxut-agent-plaza</name>
     <description>Agent Plaza Backend for WXUT</description>
 
@@ -32,7 +33,17 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-tomcat</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
