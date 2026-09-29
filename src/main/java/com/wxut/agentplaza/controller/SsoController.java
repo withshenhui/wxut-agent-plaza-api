@@ -60,29 +60,38 @@ public class SsoController {
             }
         }
 
-        SysUser user = authService.findOrCreateCasUser(uid, cn);
-        if (user.getStatus() != null && user.getStatus() == 0) {
-            redirectError(response, app, "user_disabled");
-            return;
-        }
-
-        if ("plaza-admin".equals(app)) {
-            if (!"admin".equals(user.getRole())) {
-                redirectError(response, app, "forbidden");
+        try {
+            SysUser user = authService.findOrCreateCasUser(uid, cn);
+            if (user.getStatus() != null && user.getStatus() == 0) {
+                redirectError(response, app, "user_disabled");
                 return;
             }
-            String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
-            response.sendRedirect(casConfig.getFrontEndUrl()
-                    + "/#/admin/sso-callback?token="
-                    + URLEncoder.encode(token, StandardCharsets.UTF_8.name()));
-            return;
-        }
 
-        // 默认按 xixi 处理
-        String ticket = ticketStore.create(user.getUsername());
-        response.sendRedirect(ssoProperties.getCallbacks().get("xixi")
-                + "?ticket=" + URLEncoder.encode(ticket, StandardCharsets.UTF_8.name()));
-        log.info("SSO entry: uid={} -> ticket issued for xixi", uid);
+            if ("plaza-admin".equals(app)) {
+                if (!"admin".equals(user.getRole())) {
+                    redirectError(response, app, "forbidden");
+                    return;
+                }
+                String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
+                response.sendRedirect(casConfig.getFrontEndUrl()
+                        + "/#/admin/sso-callback?token="
+                        + URLEncoder.encode(token, StandardCharsets.UTF_8.name()));
+                return;
+            }
+
+            // 默认按 xixi 处理
+            String ticket = ticketStore.create(user.getUsername());
+            response.sendRedirect(ssoProperties.getCallbacks().get("xixi")
+                    + "?ticket=" + URLEncoder.encode(ticket, StandardCharsets.UTF_8.name()));
+            log.info("SSO entry: uid={} -> ticket issued for xixi", uid);
+        } catch (Exception e) {
+            String errorMsg = e.getMessage() != null ? e.getMessage() : "unknown";
+            if (errorMsg.contains("禁用")) {
+                redirectError(response, app, "user_disabled");
+            } else {
+                redirectError(response, app, "auth_failed");
+            }
+        }
     }
 
     /** 锡锡服务端拿 ticket 换用户名（共享密钥保护，常量时间比较） */
