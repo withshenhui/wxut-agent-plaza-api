@@ -37,6 +37,7 @@ public class SecurityConfig {
             .and()
             .authorizeRequests()
                 .antMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/cas-login", "/api/v1/auth/cas-login-url", "/api/v1/auth/cas-logout-url").permitAll()
+                .antMatchers("/api/v1/sso/entry", "/api/v1/sso/validate").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/agents/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/models/**").permitAll()
@@ -68,6 +69,7 @@ public class SecurityConfig {
         FilterRegistrationBean<AuthenticationFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new AuthenticationFilter());
         registration.addUrlPatterns("/api/v1/auth/cas-login");
+        registration.addUrlPatterns("/api/v1/sso/entry");
         registration.addInitParameter("casServerLoginUrl", casConfig.getServerLoginUrl());
         registration.addInitParameter("serverName", casConfig.getClientServerUrl());
         registration.setOrder(1);
@@ -79,6 +81,7 @@ public class SecurityConfig {
         FilterRegistrationBean<Cas20ProxyReceivingTicketValidationFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new Cas20ProxyReceivingTicketValidationFilter());
         registration.addUrlPatterns("/api/v1/auth/cas-login");
+        registration.addUrlPatterns("/api/v1/sso/entry");
         registration.addInitParameter("casServerUrlPrefix", casConfig.getServerUrlPrefix());
         registration.addInitParameter("serverName", casConfig.getClientServerUrl());
         registration.addInitParameter("redirectAfterValidation", "false");
@@ -92,6 +95,7 @@ public class SecurityConfig {
         FilterRegistrationBean<HttpServletRequestWrapperFilter> registration = new FilterRegistrationBean<>();
         registration.setFilter(new HttpServletRequestWrapperFilter());
         registration.addUrlPatterns("/api/v1/auth/cas-login");
+        registration.addUrlPatterns("/api/v1/sso/entry");
         registration.setOrder(3);
         return registration;
     }
