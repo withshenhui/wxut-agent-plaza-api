@@ -58,3 +58,4 @@ sso:
   secret: XixiSso$7f3a9d21b8c4e605
   callbacks:
     xixi: http://210.28.144.49:8002/xiaozhi/user/sso-login
+    plaza-admin: http://210.28.145.186:3001/agent-plaza

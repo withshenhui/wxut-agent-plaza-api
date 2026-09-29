@@ -1,7 +1,6 @@
 package com.wxut.agentplaza.controller;
 
 import com.wxut.agentplaza.common.Result;
-import com.wxut.agentplaza.config.CasConfig;
 import com.wxut.agentplaza.config.SsoProperties;
 import com.wxut.agentplaza.entity.SysUser;
 import com.wxut.agentplaza.mapper.SysUserMapper;
@@ -37,7 +36,6 @@ public class SsoController {
     private final SsoTicketStore ticketStore;
     private final SsoProperties ssoProperties;
     private final JwtTokenProvider jwtTokenProvider;
-    private final CasConfig casConfig;
     private final SysUserMapper sysUserMapper;
 
     /** 锡锡平台前端错误回跳地址 */
@@ -78,7 +76,7 @@ public class SsoController {
                     return;
                 }
                 String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
-                response.sendRedirect(casConfig.getFrontEndUrl()
+                response.sendRedirect(ssoProperties.getCallbacks().get("plaza-admin")
                         + "/#/admin/sso-callback?token="
                         + URLEncoder.encode(token, StandardCharsets.UTF_8.name()));
                 return;
@@ -141,7 +139,7 @@ public class SsoController {
 
     private void redirectError(HttpServletResponse response, String app, String error) throws IOException {
         if ("plaza-admin".equals(app)) {
-            response.sendRedirect(casConfig.getFrontEndUrl() + "/#/admin/sso-callback?error=" + error);
+            response.sendRedirect(ssoProperties.getCallbacks().get("plaza-admin") + "/#/admin/sso-callback?error=" + error);
         } else {
             response.sendRedirect(XIXI_FRONT_END + "/#/sso-callback?error=" + error);
         }
