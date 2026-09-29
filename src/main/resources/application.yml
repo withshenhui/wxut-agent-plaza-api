@@ -53,3 +53,8 @@ springdoc:
 logging:
   level:
     com.wxut.agentplaza: DEBUG
+
+sso:
+  secret: XixiSso$7f3a9d21b8c4e605
+  callbacks:
+    xixi: http://210.28.144.49:8002/xiaozhi/user/sso-login
