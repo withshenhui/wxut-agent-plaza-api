@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>无锡职大AI中台 · 大模型运行与统计大屏</title>
+<script src="https://registry.npmmirror.com/echarts/5.5.1/files/dist/echarts.min.js"
+        onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js'"></script>
+<style>
+:root{
+  --bg0:#04091A; --bg1:#081226;
+  --panel:rgba(11,26,55,.62);
+  --panel-border:rgba(64,140,255,.22);
+  --primary:#2563EB; --primary2:#3B82F6; --sky:#38BDF8; --cyan:#06B6D4;
+  --green:#10B981; --amber:#F59E0B; --orange:#F97316; --red:#EF4444;
+  --t1:#DFF1FF; --t2:#8FB8E8; --t3:#5C7DA6;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;color:var(--t1)}
+/* ---------- 背景装饰 ---------- */
+.bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(160deg,#04091A 0%,#071126 45%,#0A1630 100%)}
+.bg::before{content:'';position:absolute;inset:0;opacity:.5;
+  background-image:linear-gradient(rgba(59,130,246,.05) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(59,130,246,.05) 1px,transparent 1px);
+  background-size:56px 56px}
+.glow{position:absolute;border-radius:50%;filter:blur(120px);opacity:.5}
+.glow1{width:720px;height:480px;left:-160px;top:-180px;background:radial-gradient(circle,rgba(37,99,235,.45),transparent 70%)}
+.glow2{width:620px;height:420px;right:-140px;bottom:-120px;background:radial-gradient(circle,rgba(6,182,212,.28),transparent 70%)}
+.glow3{width:460px;height:300px;left:44%;top:32%;background:radial-gradient(circle,rgba(59,130,246,.16),transparent 70%)}
+/* ---------- 大屏容器 ---------- */
+.screen{position:relative;z-index:1;width:1920px;height:1080px;transform-origin:0 0;
+  display:flex;flex-direction:column;padding:10px 16px 12px;gap:10px}
+/* ---------- 顶部标题 ---------- */
+.header{height:88px;flex:none;display:flex;align-items:center;justify-content:center;position:relative}
+.header::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,rgba(59,130,246,.75),rgba(56,189,248,.75),transparent)}
+.header::before{content:'';position:absolute;bottom:-3px;left:38%;width:24%;height:8px;border-radius:50%;
+  background:rgba(56,189,248,.35);filter:blur(6px)}
+.header-center{text-align:center}
+.header-title{font-size:34px;font-weight:700;letter-spacing:6px;line-height:1.1;
+  background:linear-gradient(180deg,#FFFFFF 0%,#A9CCFF 55%,#5EA2FF 100%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  text-shadow:0 0 30px rgba(59,130,246,.35)}
+.header-sub{font-size:13px;letter-spacing:3px;color:var(--t2);margin-top:11px;
+  display:flex;align-items:center;justify-content:center;gap:10px}
+.header-sub::before,.header-sub::after{content:'';width:42px;height:1px;background:linear-gradient(90deg,transparent,var(--t2))}
+.header-sub::after{background:linear-gradient(90deg,var(--t2),transparent)}
+.header-right{position:absolute;right:26px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:14px;z-index:5}
+.header-time{text-align:right}
+.header-time .date{font-size:14px;color:var(--t2);letter-spacing:1px}
+.header-time .clock{font-size:28px;font-weight:600;color:#CDE7FF;font-variant-numeric:tabular-nums;
+  text-shadow:0 0 18px rgba(56,189,248,.4)}
+.fs-btn{width:38px;height:38px;flex:none;border-radius:8px;cursor:pointer;user-select:none;
+  display:flex;align-items:center;justify-content:center;color:var(--t2);
+  background:rgba(59,130,246,.12);border:1px solid rgba(64,140,255,.3);
+  backdrop-filter:blur(4px);transition:.2s}
+.fs-btn:hover{color:#fff;background:rgba(37,99,235,.35);border-color:rgba(56,189,248,.6);
+  box-shadow:0 0 16px rgba(37,99,235,.45)}
+.fs-btn svg{width:18px;height:18px}
+.fs-btn .ic-exit{display:none}
+.fs-btn.on .ic-in{display:none}
+.fs-btn.on .ic-exit{display:block}
+.header-logo{position:absolute;left:26px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:10px}
+.header-logo .logo-badge{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#2563EB,#38BDF8);box-shadow:0 0 18px rgba(59,130,246,.5)}
+.header-logo .logo-txt{font-size:15px;color:var(--t2);letter-spacing:2px}
+/* ---------- KPI 指标卡 ---------- */
+.kpi-row{flex:none;height:106px;display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+.kpi{position:relative;border-radius:6px;background:var(--panel);border:1px solid var(--panel-border);
+  padding:12px 16px 9px;overflow:hidden;backdrop-filter:blur(4px);
+  box-shadow:0 0 0 rgba(37,99,235,0);transition:box-shadow .3s}
+.kpi:hover{box-shadow:0 0 22px rgba(37,99,235,.28)}
+.kpi::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:linear-gradient(180deg,var(--kc,#3B82F6),transparent)}
+.kpi::after{content:'';position:absolute;right:-30px;top:-30px;width:110px;height:110px;border-radius:50%;
+  background:radial-gradient(circle,var(--kc,#3B82F6) 0%,transparent 70%);opacity:.14}
+.kpi-head{display:flex;align-items:center;justify-content:space-between}
+.kpi-label{font-size:14px;color:var(--t2);letter-spacing:1px}
+.kpi-icon{width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+  background:rgba(59,130,246,.14);color:var(--kc,#3B82F6);border:1px solid rgba(59,130,246,.25)}
+.kpi-value{margin-top:5px;font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1;
+  color:#EAF5FF;text-shadow:0 0 16px rgba(59,130,246,.35)}
+.kpi-value em{font-style:normal;font-size:15px;font-weight:400;color:var(--t2);margin-left:5px}
+.kpi-foot{margin-top:7px;display:flex;align-items:center;gap:7px;font-size:12px;color:var(--t3)}
+.kpi-trend{display:inline-flex;align-items:center;gap:3px;font-weight:600}
+.kpi-trend.up{color:var(--green)} .kpi-trend.down{color:var(--red)}
+.kpi-bar{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(64,140,255,.1)}
+.kpi-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--kc,#3B82F6),rgba(56,189,248,.5));
+  box-shadow:0 0 8px var(--kc,#3B82F6);transition:width 1.2s ease}
+/* ---------- 主图表区 ---------- */
+.main{flex:1;display:grid;grid-template-columns:1fr 1.08fr 1fr;gap:12px;min-height:0}
+.col{display:flex;flex-direction:column;gap:12px;min-height:0}
+.panel{flex:1;min-height:0;position:relative;border-radius:6px;background:var(--panel);
+  border:1px solid var(--panel-border);backdrop-filter:blur(4px);padding:10px 12px 8px;display:flex;flex-direction:column}
+.panel::before,.panel::after,.panel .c2,.panel .c3{content:'';position:absolute;width:14px;height:14px;pointer-events:none}
+.panel::before{left:-1px;top:-1px;border-left:2px solid #3B82F6;border-top:2px solid #3B82F6;
+  border-top-left-radius:6px;filter:drop-shadow(0 0 5px rgba(59,130,246,.8))}
+.panel::after{right:-1px;top:-1px;border-right:2px solid #3B82F6;border-top:2px solid #3B82F6;
+  border-top-right-radius:6px;filter:drop-shadow(0 0 5px rgba(59,130,246,.8))}
+.panel .c2{left:-1px;bottom:-1px;border-left:2px solid #38BDF8;border-bottom:2px solid #38BDF8;
+  border-bottom-left-radius:6px;filter:drop-shadow(0 0 5px rgba(56,189,248,.8))}
+.panel .c3{right:-1px;bottom:-1px;border-right:2px solid #38BDF8;border-bottom:2px solid #38BDF8;
+  border-bottom-right-radius:6px;filter:drop-shadow(0 0 5px rgba(56,189,248,.8))}
+.panel-title{flex:none;display:flex;align-items:center;gap:8px;padding:0 2px 8px}
+.panel-title .bar{width:4px;height:15px;border-radius:2px;background:linear-gradient(180deg,#3B82F6,#38BDF8);
+  box-shadow:0 0 8px rgba(59,130,246,.8)}
+.panel-title h3{font-size:15px;font-weight:600;letter-spacing:1px;color:#D6EAFF}
+.panel-title .en{font-size:11px;color:var(--t3);letter-spacing:1px;margin-left:auto}
+.chart{flex:1;min-height:0}
+/* ---------- 数字孪生校园 ---------- */
+.twin-wrap{flex:1;min-height:0}
+.twin-wrap svg{width:100%;height:100%;display:block}
+.tw-pulse{transform-box:fill-box;transform-origin:center !important;animation:twPulse 2.2s ease-in-out infinite}
+@keyframes twPulse{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.45);opacity:.45}}
+.tw-ripple{transform-box:fill-box;transform-origin:center;animation:twRipple 2.8s ease-out infinite}
+@keyframes twRipple{0%{transform:scale(.35);opacity:.9}100%{transform:scale(1.5);opacity:0}}
+.tw-beam{animation:twBeam 2.6s ease-in-out infinite}
+@keyframes twBeam{0%,100%{opacity:.45}50%{opacity:.95}}
+/* ---------- 业务场景排行 ---------- */
+.scene-wrap{flex:1;display:flex;gap:6px;min-height:0}
+.scene-chart{width:47%;min-height:0}
+.scene-list{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:6px 4px 2px}
+.sc-item{display:flex;align-items:center;gap:8px}
+.sc-name{width:60px;font-size:12px;color:#9CC7FF;flex:none;white-space:nowrap}
+.sc-bar{flex:1;height:8px;border-radius:4px;background:rgba(64,140,255,.1);overflow:hidden}
+.sc-bar i{display:block;height:100%;border-radius:4px;transition:width 1s ease}
+.sc-val{width:76px;text-align:right;font-size:12px;color:#EAF5FF;font-variant-numeric:tabular-nums;flex:none;white-space:nowrap}
+.sc-val em{font-style:normal;font-size:10px;color:#5C7DA6;margin-left:2px}
+
+/* ---------- 状态灯 ---------- */
+.dot{width:8px;height:8px;border-radius:50%;flex:none;position:relative}
+.dot.ok{background:var(--green);box-shadow:0 0 8px var(--green)}
+.dot.ok::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:1px solid var(--green);animation:pulse 1.8s ease-out infinite}
+.dot.warn{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.dot.warn::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:1px solid var(--amber);animation:pulse 1.2s ease-out infinite}
+.dot.err{background:var(--red);box-shadow:0 0 8px var(--red)}
+@keyframes pulse{0%{transform:scale(.5);opacity:1}100%{transform:scale(1.6);opacity:0}}
+/* ---------- 底部：三段式（告警中心 + 学院榜单 + 算力监控） ---------- */
+.bottom{flex:none;height:190px;display:grid;grid-template-columns:1.15fr 1.55fr 1fr;gap:12px}
+.log-panel{position:relative;border-radius:6px;background:var(--panel);border:1px solid var(--panel-border);
+  padding:8px 12px;display:flex;flex-direction:column;overflow:hidden;backdrop-filter:blur(4px)}
+.log-panel::before,.log-panel::after{content:'';position:absolute;width:14px;height:14px;pointer-events:none}
+.log-panel::before{left:-1px;top:-1px;border-left:2px solid #3B82F6;border-top:2px solid #3B82F6;border-top-left-radius:6px;filter:drop-shadow(0 0 5px rgba(59,130,246,.8))}
+.log-panel::after{right:-1px;bottom:-1px;border-right:2px solid #38BDF8;border-bottom:2px solid #38BDF8;border-bottom-right-radius:6px;filter:drop-shadow(0 0 5px rgba(56,189,248,.8))}
+.log-head{flex:none;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.log-head .bar{width:4px;height:14px;border-radius:2px;background:linear-gradient(180deg,#3B82F6,#38BDF8);box-shadow:0 0 8px rgba(59,130,246,.8)}
+.log-head h3{font-size:14px;font-weight:600;letter-spacing:1px;color:#D6EAFF}
+.log-head .live{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--green)}
+.log-head .live i{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);animation:blink 1.2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.log-body{flex:1;overflow:hidden;position:relative;mask-image:linear-gradient(180deg,transparent 0,#000 10%,#000 88%,transparent 100%)}
+.log-body ul{list-style:none}
+.log-body li{display:flex;align-items:center;gap:10px;height:22px;font-size:11.5px;color:var(--t2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-bottom:1px solid rgba(64,140,255,.06)}
+.log-body li.new{animation:rowin .6s ease}
+@keyframes rowin{0%{opacity:0;transform:translateY(-10px)}100%{opacity:1;transform:translateY(0)}}
+.log-time{color:var(--t3);font-variant-numeric:tabular-nums;flex:none}
+.log-user{color:#9CC7FF;flex:none}
+.log-desc{overflow:hidden;text-overflow:ellipsis}
+.log-status{flex:none;margin-left:auto;font-size:11px;padding:1px 7px;border-radius:3px}
+.st-ok{color:#6EE7B7;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3)}
+.st-warn{color:#FCD34D;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.3)}
+.st-err{color:#FCA5A5;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3)}
+.log-dot{width:7px;height:7px;border-radius:50%;flex:none}
+
+/* ---------- 告警统计胶囊 ---------- */
+.al-caps{flex:none;display:flex;gap:8px;padding:1px 0 6px}
+.al-cap{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:5px;
+  padding:4px 0;background:rgba(64,140,255,.05);border:1px solid rgba(64,140,255,.14)}
+.al-cap b{font-size:18px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums;
+  font-family:"Bahnschrift","Segoe UI",sans-serif}
+.al-cap span{font-size:10.5px;color:var(--t3);letter-spacing:1px}
+.al-cap.all b{color:#7CC4F8;text-shadow:0 0 10px rgba(59,130,246,.6)}
+.al-cap.err b{color:#FCA5A5;text-shadow:0 0 10px rgba(239,68,68,.6)}
+.al-cap.warn b{color:#FCD34D;text-shadow:0 0 10px rgba(245,158,11,.6)}
+
+/* ---------- 学院奖牌榜单 ---------- */
+.dep-wrap{flex:1;min-height:0;display:flex;gap:14px}
+.dep-top3{flex:none;width:262px;display:flex;flex-direction:column;gap:6px;justify-content:center}
+.dep-row{display:flex;align-items:center;gap:9px;border-radius:5px;padding:5px 10px;position:relative;overflow:hidden}
+.dep-row .medal{width:26px;height:26px;flex:none;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font:700 12px/1 "Bahnschrift","Segoe UI",sans-serif;color:#0A1226}
+.dep-row.g1{background:linear-gradient(90deg,rgba(245,158,11,.22),rgba(245,158,11,.02));border:1px solid rgba(245,158,11,.4)}
+.dep-row.g1 .medal{background:linear-gradient(135deg,#FDE68A,#F59E0B);box-shadow:0 0 12px rgba(245,158,11,.8)}
+.dep-row.g2{background:linear-gradient(90deg,rgba(148,163,184,.20),rgba(148,163,184,.02));border:1px solid rgba(148,163,184,.4)}
+.dep-row.g2 .medal{background:linear-gradient(135deg,#E2E8F0,#94A3B8);box-shadow:0 0 12px rgba(148,163,184,.7)}
+.dep-row.g3{background:linear-gradient(90deg,rgba(217,119,6,.20),rgba(217,119,6,.02));border:1px solid rgba(217,119,6,.4)}
+.dep-row.g3 .medal{background:linear-gradient(135deg,#FDBA74,#D97706);box-shadow:0 0 12px rgba(217,119,6,.7)}
+.dep-row .dep-name{font-size:12.5px;color:#D6EAFF;font-weight:600;white-space:nowrap}
+.dep-row .dep-val{margin-left:auto;font:700 15px/1 "Bahnschrift","Segoe UI",sans-serif;color:#EAF5FF;font-variant-numeric:tabular-nums}
+.dep-row .dep-val em{font-style:normal;font-size:9px;color:var(--t3);margin-left:2px;font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-weight:400}
+.dep-list{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:space-between;padding:3px 0}
+.dep-li{display:flex;align-items:center;gap:8px;font-size:11px}
+.dep-li .no{width:14px;color:var(--t3);font:600 11px/1 "Bahnschrift","Segoe UI",sans-serif;flex:none;text-align:center}
+.dep-li .nm{width:118px;color:#9CC7FF;flex:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dep-li .bar{flex:1;height:6px;border-radius:3px;background:rgba(64,140,255,.1);overflow:hidden}
+.dep-li .bar i{display:block;height:100%;border-radius:3px;transition:width .8s ease;
+  background:linear-gradient(90deg,#1D4ED8,#3B82F6,#38BDF8);box-shadow:0 0 6px rgba(56,189,248,.55)}
+.dep-li .vl{width:58px;text-align:right;color:#EAF5FF;flex:none;font-weight:600;
+  font-family:"Bahnschrift","Segoe UI",sans-serif;font-variant-numeric:tabular-nums}
+.dep-li .tr{width:32px;text-align:right;flex:none;font-size:10px;font-family:"Bahnschrift","Segoe UI",sans-serif}
+.dep-li .tr.up{color:var(--green)}.dep-li .tr.dn{color:var(--red)}
+
+/* ---------- 算力资源圆环仪表 ---------- */
+.res-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:space-around;gap:4px;padding:2px 0 4px}
+.gauge{display:flex;flex-direction:column;align-items:center;gap:2px}
+.gauge svg{width:78px;height:78px;display:block}
+.gauge .gl{font-size:10.5px;color:var(--t3);letter-spacing:1.5px}
+.qps-bar{flex:none;display:flex;align-items:center;justify-content:center;gap:9px;
+  border-top:1px dashed rgba(64,140,255,.18);padding-top:6px;font-size:11px;color:var(--t3);letter-spacing:1px}
+.qps-bar b{font:700 16px/1 "Bahnschrift","Segoe UI",sans-serif;color:#7DD3FC;font-variant-numeric:tabular-nums;
+  text-shadow:0 0 12px rgba(56,189,248,.55)}
+.qps-bar .sep{width:1px;height:12px;background:rgba(64,140,255,.25)}
+</style>
+</head>
+<body>
+<div class="bg"><div class="glow glow1"></div><div class="glow glow2"></div><div class="glow glow3"></div></div>
+
+<div id="screen" class="screen">
+  <!-- ================= 顶部标题 ================= -->
+  <header class="header">
+    <div class="header-logo">
+      <div class="logo-badge">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4M9.5 12h5M12 9.5v5"/>
+        </svg>
+      </div>
+      <div class="logo-txt">无锡职业技术大学<br><span style="font-size:11px;color:#5C7DA6">WUXI UNIVERSITY OF TECHNOLOGY</span></div>
+    </div>
+    <div class="header-center">
+      <div class="header-title">无锡职大AI中台 · 大模型运行与统计大屏</div>
+      <div class="header-sub">WXUT AI PLATFORM — LLM OPERATIONS &amp; ANALYTICS</div>
+    </div>
+    <div class="header-right">
+      <div class="fs-btn" id="fsBtn" title="全屏显示">
+        <svg class="ic-in" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>
+        </svg>
+        <svg class="ic-exit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/>
+        </svg>
+      </div>
+      <div class="header-time">
+        <div class="date" id="hDate">--</div>
+        <div class="clock" id="hClock">--:--:--</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= KPI 指标 ================= -->
+  <section class="kpi-row">
+    <div class="kpi" style="--kc:#3B82F6">
+      <div class="kpi-head"><span class="kpi-label">在线模型</span>
+        <span class="kpi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 9h6v6H9zM9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg></span></div>
+      <div class="kpi-value"><span id="kpi1">11</span><em>个</em></div>
+      <div class="kpi-foot"><span class="kpi-trend up">▲ +2</span>今日新上线</div>
+      <div class="kpi-bar"><i style="width:72%"></i></div>
+    </div>
+    <div class="kpi" style="--kc:#38BDF8">
+      <div class="kpi-head"><span class="kpi-label">今日调用总量</span>
+        <span class="kpi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h6l-1 8 9-12h-6z"/></svg></span></div>
+      <div class="kpi-value"><span id="kpi2">2,580</span><em>次</em></div>
+      <div class="kpi-foot"><span class="kpi-trend up">▲ +12.6%</span>较昨日</div>
+      <div class="kpi-bar"><i style="width:64%"></i></div>
+    </div>
+    <div class="kpi" style="--kc:#06B6D4">
+      <div class="kpi-head"><span class="kpi-label">活跃用户</span>
+        <span class="kpi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.4 3.4-5 6.5-5s5.7 1.6 6.5 5"/><circle cx="17.5" cy="9" r="2.6"/><path d="M15.5 14.6c3 .3 5 1.9 5.9 4.9"/></svg></span></div>
+      <div class="kpi-value"><span id="kpi3">250</span><em>人</em></div>
+      <div class="kpi-foot"><span class="kpi-trend up">▲ +8.3%</span>较昨日</div>
+      <div class="kpi-bar"><i style="width:58%"></i></div>
+    </div>
+    <div class="kpi" style="--kc:#10B981">
+      <div class="kpi-head"><span class="kpi-label">今日Token消耗</span>
+        <span class="kpi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span></div>
+      <div class="kpi-value"><span id="kpi4">11,684,633</span></div>
+      <div class="kpi-foot"><span class="kpi-trend up">▲ +15.2%</span>较昨日</div>
+      <div class="kpi-bar"><i style="width:76%"></i></div>
+    </div>
+    <div class="kpi" style="--kc:#F59E0B">
+      <div class="kpi-head"><span class="kpi-label">平均响应时长</span>
+        <span class="kpi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg></span></div>
+      <div class="kpi-value"><span id="kpi5">1.28</span><em>秒</em></div>
+      <div class="kpi-foot"><span class="kpi-trend down">▼ -0.15s</span>较昨日</div>
+      <div class="kpi-bar"><i style="width:42%"></i></div>
+    </div>
+    <div class="kpi" style="--kc:#F97316">
+      <div class="kpi-head"><span class="kpi-label">调用成功率</span>
+        <span class="kpi-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></span></div>
+      <div class="kpi-value"><span id="kpi6">99.92</span><em>%</em></div>
+      <div class="kpi-foot"><span class="kpi-trend up">▲ +0.04%</span>较昨日</div>
+      <div class="kpi-bar"><i style="width:90%"></i></div>
+    </div>
+  </section>
+
+  <!-- ================= 主图表区 ================= -->
+  <main class="main">
+    <!-- 左列 -->
+    <div class="col">
+      <div class="panel"><i class="c2"></i><i class="c3"></i>
+        <div class="panel-title"><span class="bar"></span><h3>今日调用趋势</h3><span class="en">CALL TREND / 24H</span></div>
+        <div id="chartTrend" class="chart"></div>
+      </div>
+      <div class="panel"><i class="c2"></i><i class="c3"></i>
+        <div class="panel-title"><span class="bar"></span><h3>热门智能体应用 TOP10</h3><span class="en">AGENT APP RANKING</span></div>
+        <div id="chartRank" class="chart"></div>
+      </div>
+    </div>
+    <!-- 中列 -->
+    <div class="col">
+      <div class="panel" style="flex:2.55"><i class="c2"></i><i class="c3"></i>
+        <div class="panel-title"><span class="bar"></span><h3>智慧校园 AI 运行态势</h3><span class="en">DIGITAL TWIN CAMPUS · LIVE</span></div>
+        <div class="twin-wrap">
+          <svg viewBox="0 0 560 432" preserveAspectRatio="xMidYMid meet">
+            <!-- 图例 -->
+            <g font-size="8" fill="#5C7DA6">
+              <rect x="10" y="12" width="8" height="8" rx="2" fill="#38BDF8"/>
+              <text x="21" y="19">高活跃</text>
+              <rect x="58" y="12" width="8" height="8" rx="2" fill="#3B82F6"/>
+              <text x="69" y="19">中高</text>
+              <rect x="94" y="12" width="8" height="8" rx="2" fill="#10B981"/>
+              <text x="105" y="19">中等</text>
+              <rect x="132" y="12" width="8" height="8" rx="2" fill="#F59E0B"/>
+              <text x="143" y="19">一般</text>
+            </g>
+            <!-- 道路 -->
+            <g stroke="rgba(56,189,248,.14)" stroke-width="2" fill="none">
+              <line x1="190" y1="8" x2="190" y2="424"/>
+              <line x1="372" y1="8" x2="372" y2="424"/>
+              <line x1="8" y1="104" x2="552" y2="104"/>
+              <line x1="8" y1="308" x2="552" y2="308"/>
+            </g>
+            <!-- 湖泊 -->
+            <ellipse cx="516" cy="36" rx="30" ry="18" fill="#0A2A44" stroke="rgba(56,189,248,.35)" stroke-width="1.5"/>
+            <path d="M494,31 Q504,26 514,31 Q524,36 534,31" stroke="rgba(56,189,248,.4)" stroke-width="1" fill="none" opacity=".6"/>
+            <path d="M498,42 Q508,37 518,42 Q528,47 538,42" stroke="rgba(56,189,248,.3)" stroke-width="1" fill="none" opacity=".5"/>
+            <!-- 绿地 -->
+            <rect x="26" y="292" width="52" height="52" rx="8" fill="#0B2B1F" stroke="rgba(16,185,129,.25)" stroke-width="1"/>
+            <rect x="490" y="296" width="48" height="48" rx="8" fill="#0B2B1F" stroke="rgba(16,185,129,.25)" stroke-width="1"/>
+            <rect x="196" y="168" width="24" height="18" rx="4" fill="#0B2B1F" opacity=".8"/>
+            <rect x="344" y="166" width="24" height="18" rx="4" fill="#0B2B1F" opacity=".8"/>
+
+            <!-- 粒子流 -->
+            <g fill="none" stroke="rgba(56,189,248,.22)" stroke-width="1.2">
+              <path id="fl1" d="M134,92 C180,120 200,170 244,200"/>
+              <path id="fl2" d="M298,76 C294,120 288,160 284,198"/>
+              <path id="fl3" d="M432,92 C380,120 360,170 316,200"/>
+              <path id="fl4" d="M132,356 C180,330 220,280 248,258"/>
+              <path id="fl5" d="M295,364 C288,320 284,280 282,258"/>
+              <path id="fl6" d="M436,356 C380,330 340,280 312,258"/>
+            </g>
+            <g fill="#7DD3FC" opacity=".85">
+              <circle r="2.2"><animateMotion dur="3.4s" repeatCount="indefinite" path="M134,92 C180,120 200,170 244,200"/></circle>
+              <circle r="1.6"><animateMotion dur="3.4s" begin="1.7s" repeatCount="indefinite" path="M134,92 C180,120 200,170 244,200"/></circle>
+              <circle r="2.2"><animateMotion dur="3s" repeatCount="indefinite" path="M298,76 C294,120 288,160 284,198"/></circle>
+              <circle r="1.6"><animateMotion dur="3s" begin="1.5s" repeatCount="indefinite" path="M298,76 C294,120 288,160 284,198"/></circle>
+              <circle r="2.2"><animateMotion dur="3.6s" repeatCount="indefinite" path="M432,92 C380,120 360,170 316,200"/></circle>
+              <circle r="1.6"><animateMotion dur="3.6s" begin="1.8s" repeatCount="indefinite" path="M432,92 C380,120 360,170 316,200"/></circle>
+              <circle r="2"><animateMotion dur="3.2s" repeatCount="indefinite" path="M132,356 C180,330 220,280 248,258"/></circle>
+              <circle r="2"><animateMotion dur="2.8s" repeatCount="indefinite" path="M295,364 C288,320 284,280 282,258"/></circle>
+              <circle r="1.4"><animateMotion dur="2.8s" begin="1.4s" repeatCount="indefinite" path="M295,364 C288,320 284,280 282,258"/></circle>
+              <circle r="2"><animateMotion dur="3.2s" begin="1.6s" repeatCount="indefinite" path="M436,356 C380,330 340,280 312,258"/></circle>
+            </g>
+
+            <!-- 建筑：物联网工程学院（软件/AI/大数据） -->
+            <g>
+              <rect id="beam-A" x="297" y="14" width="4" height="20" rx="2" fill="url(#bgA)" opacity=".75" class="tw-beam"/>
+              <rect x="245" y="34" width="106" height="42" rx="5" fill="#0F2440" stroke="#38BDF8" stroke-width="1.5"/>
+              <rect x="251" y="40" width="94" height="7" rx="2" fill="rgba(56,189,248,.18)"/>
+              <circle id="dot-A" cx="299" cy="12" r="4.5" fill="#38BDF8" class="tw-pulse" style="transform-origin:299px 12px"/>
+              <text x="298" y="62" font-size="10" fill="#CDE7FF" text-anchor="middle">物联网工程学院</text>
+              <text id="val-A" x="298" y="84" font-size="10" fill="#7DD3FC" text-anchor="middle">1,582 次</text>
+            </g>
+            <!-- 建筑：机械工程学院 -->
+            <g>
+              <rect id="beam-B" x="133" y="26" width="4" height="24" rx="2" fill="url(#bgB)" opacity=".75" class="tw-beam"/>
+              <rect x="88" y="50" width="92" height="40" rx="5" fill="#0F2440" stroke="#38BDF8" stroke-width="1.5"/>
+              <rect x="94" y="56" width="80" height="7" rx="2" fill="rgba(56,189,248,.18)"/>
+              <circle id="dot-B" cx="135" cy="24" r="4.2" fill="#38BDF8" class="tw-pulse" style="transform-origin:135px 24px"/>
+              <text x="134" y="77" font-size="10" fill="#CDE7FF" text-anchor="middle">机械工程学院</text>
+              <text id="val-B" x="134" y="99" font-size="10" fill="#7DD3FC" text-anchor="middle">1,392 次</text>
+            </g>
+            <!-- 建筑：控制工程学院 -->
+            <g>
+              <rect id="beam-C" x="431" y="30" width="4" height="20" rx="2" fill="url(#bgC)" opacity=".75" class="tw-beam"/>
+              <rect x="386" y="50" width="92" height="40" rx="5" fill="#0F2440" stroke="#3B82F6" stroke-width="1.5"/>
+              <rect x="392" y="56" width="80" height="7" rx="2" fill="rgba(59,130,246,.16)"/>
+              <circle id="dot-C" cx="433" cy="28" r="3.8" fill="#3B82F6" class="tw-pulse" style="transform-origin:433px 28px"/>
+              <text x="432" y="77" font-size="10" fill="#CDE7FF" text-anchor="middle">控制工程学院</text>
+              <text id="val-C" x="432" y="99" font-size="10" fill="#9CC7FF" text-anchor="middle">1,186 次</text>
+            </g>
+            <!-- 建筑：智能制造工程中心 -->
+            <g>
+              <rect id="beam-I" x="186" y="128" width="3.5" height="22" rx="2" fill="url(#bgI)" opacity=".7" class="tw-beam"/>
+              <rect x="150" y="150" width="74" height="34" rx="5" fill="#0F2440" stroke="#10B981" stroke-width="1.5"/>
+              <rect x="155" y="155" width="64" height="6" rx="2" fill="rgba(16,185,129,.15)"/>
+              <circle id="dot-I" cx="188" cy="126" r="3.4" fill="#10B981" class="tw-pulse" style="transform-origin:188px 126px"/>
+              <text x="187" y="168" font-size="9" fill="#CDE7FF" text-anchor="middle">智能制造</text>
+              <text x="187" y="180" font-size="9" fill="#CDE7FF" text-anchor="middle">工程中心</text>
+              <text id="val-I" x="187" y="194" font-size="10" fill="#6EE7B7" text-anchor="middle">516 次</text>
+            </g>
+            <!-- 建筑：行政 -->
+            <g>
+              <rect id="beam-J" x="373" y="128" width="3.5" height="22" rx="2" fill="url(#bgJ)" opacity=".7" class="tw-beam"/>
+              <rect x="340" y="150" width="74" height="34" rx="5" fill="#0F2440" stroke="#F59E0B" stroke-width="1.5"/>
+              <rect x="345" y="155" width="64" height="6" rx="2" fill="rgba(245,158,11,.13)"/>
+              <circle id="dot-J" cx="375" cy="126" r="3.2" fill="#F59E0B" class="tw-pulse" style="transform-origin:375px 126px"/>
+              <text x="377" y="174" font-size="10" fill="#CDE7FF" text-anchor="middle">行政</text>
+              <text id="val-J" x="377" y="192" font-size="10" fill="#FCD34D" text-anchor="middle">432 次</text>
+            </g>
+
+            <!-- AI 中台核心 -->
+            <g>
+              <circle cx="280" cy="216" r="52" fill="none" stroke="rgba(56,189,248,.35)" stroke-width="1.2" class="tw-ripple"/>
+              <circle cx="280" cy="216" r="52" fill="none" stroke="rgba(59,130,246,.4)" stroke-width="1.2" class="tw-ripple" style="animation-delay:1.4s"/>
+              <polygon points="280,168 324,192 324,240 280,264 236,240 236,192" fill="rgba(37,99,235,.2)" stroke="#3B82F6" stroke-width="2"/>
+              <polygon points="280,178 316,198 316,234 280,254 244,234 244,198" fill="rgba(37,99,235,.35)" stroke="rgba(56,189,248,.5)" stroke-width="1"/>
+              <circle cx="280" cy="216" r="16" fill="rgba(56,189,248,.25)" class="tw-pulse"/>
+              <text x="280" y="212" font-size="13" font-weight="700" fill="#DFF1FF" text-anchor="middle">AI 中台</text>
+              <text x="280" y="226" font-size="9" fill="#7DD3FC" text-anchor="middle">核心网关</text>
+              <text x="280" y="278" font-size="9" fill="#5C7DA6" text-anchor="middle">实时吞吐 (QPS)</text>
+              <text id="qpsVal" x="280" y="296" font-size="15" font-weight="700" fill="#7DD3FC" text-anchor="middle">12</text>
+            </g>
+
+            <!-- 建筑：集成电路学院 -->
+            <g>
+              <rect id="beam-D" x="81" y="216" width="3.5" height="24" rx="2" fill="url(#bgD)" opacity=".7" class="tw-beam"/>
+              <rect x="40" y="240" width="84" height="40" rx="5" fill="#0F2440" stroke="#3B82F6" stroke-width="1.5"/>
+              <rect x="46" y="246" width="72" height="7" rx="2" fill="rgba(59,130,246,.16)"/>
+              <circle id="dot-D" cx="83" cy="214" r="3.6" fill="#3B82F6" class="tw-pulse" style="transform-origin:83px 214px"/>
+              <text x="82" y="267" font-size="10" fill="#CDE7FF" text-anchor="middle">集成电路学院</text>
+              <text id="val-D" x="82" y="289" font-size="10" fill="#9CC7FF" text-anchor="middle">1,024 次</text>
+            </g>
+            <!-- 建筑：设计艺术学院 -->
+            <g>
+              <rect id="beam-E" x="477" y="216" width="3.5" height="24" rx="2" fill="url(#bgE)" opacity=".7" class="tw-beam"/>
+              <rect x="436" y="240" width="84" height="40" rx="5" fill="#0F2440" stroke="#10B981" stroke-width="1.5"/>
+              <rect x="442" y="246" width="72" height="7" rx="2" fill="rgba(16,185,129,.15)"/>
+              <circle id="dot-E" cx="479" cy="214" r="3.4" fill="#10B981" class="tw-pulse" style="transform-origin:479px 214px"/>
+              <text x="478" y="267" font-size="10" fill="#CDE7FF" text-anchor="middle">设计艺术学院</text>
+              <text id="val-E" x="478" y="289" font-size="10" fill="#6EE7B7" text-anchor="middle">868 次</text>
+            </g>
+            <!-- 建筑：汽车与交通工程学院 -->
+            <g>
+              <rect id="beam-F" x="133" y="334" width="4" height="22" rx="2" fill="url(#bgF)" opacity=".7" class="tw-beam"/>
+              <rect x="86" y="356" width="92" height="40" rx="5" fill="#0F2440" stroke="#10B981" stroke-width="1.5"/>
+              <rect x="92" y="362" width="80" height="7" rx="2" fill="rgba(16,185,129,.15)"/>
+              <circle id="dot-F" cx="135" cy="332" r="3.4" fill="#10B981" class="tw-pulse" style="transform-origin:135px 332px"/>
+              <text x="132" y="383" font-size="9" fill="#CDE7FF" text-anchor="middle">汽车与交通工程学院</text>
+              <text id="val-F" x="132" y="405" font-size="10" fill="#6EE7B7" text-anchor="middle">792 次</text>
+            </g>
+            <!-- 建筑：学生宿舍区 -->
+            <g>
+              <rect id="beam-G" x="294" y="340" width="4" height="24" rx="2" fill="url(#bgG)" opacity=".7" class="tw-beam"/>
+              <rect x="240" y="364" width="110" height="42" rx="5" fill="#0F2440" stroke="#3B82F6" stroke-width="1.5"/>
+              <rect x="246" y="370" width="98" height="7" rx="2" fill="rgba(59,130,246,.16)"/>
+              <circle id="dot-G" cx="296" cy="338" r="3.8" fill="#3B82F6" class="tw-pulse" style="transform-origin:296px 338px"/>
+              <text x="295" y="392" font-size="10" fill="#CDE7FF" text-anchor="middle">学生宿舍区</text>
+              <text id="val-G" x="295" y="414" font-size="10" fill="#9CC7FF" text-anchor="middle">706 次</text>
+            </g>
+            <!-- 建筑：图书馆 -->
+            <g>
+              <rect id="beam-H" x="433" y="334" width="4" height="22" rx="2" fill="url(#bgH)" opacity=".7" class="tw-beam"/>
+              <rect x="390" y="356" width="92" height="40" rx="5" fill="#0F2440" stroke="#10B981" stroke-width="1.5"/>
+              <rect x="396" y="362" width="80" height="7" rx="2" fill="rgba(16,185,129,.15)"/>
+              <circle id="dot-H" cx="435" cy="332" r="3.4" fill="#10B981" class="tw-pulse" style="transform-origin:435px 332px"/>
+              <text x="436" y="383" font-size="10" fill="#CDE7FF" text-anchor="middle">图书馆</text>
+              <text id="val-H" x="436" y="405" font-size="10" fill="#6EE7B7" text-anchor="middle">598 次</text>
+            </g>
+            <defs>
+              <linearGradient id="bgA" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7DD3FC"/><stop offset="1" stop-color="rgba(125,211,252,0)"/></linearGradient>
+              <linearGradient id="bgB" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7DD3FC"/><stop offset="1" stop-color="rgba(125,211,252,0)"/></linearGradient>
+              <linearGradient id="bgC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="rgba(96,165,250,0)"/></linearGradient>
+              <linearGradient id="bgD" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="rgba(96,165,250,0)"/></linearGradient>
+              <linearGradient id="bgE" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6EE7B7"/><stop offset="1" stop-color="rgba(110,231,183,0)"/></linearGradient>
+              <linearGradient id="bgF" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6EE7B7"/><stop offset="1" stop-color="rgba(110,231,183,0)"/></linearGradient>
+              <linearGradient id="bgG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="rgba(96,165,250,0)"/></linearGradient>
+              <linearGradient id="bgH" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6EE7B7"/><stop offset="1" stop-color="rgba(110,231,183,0)"/></linearGradient>
+              <linearGradient id="bgI" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6EE7B7"/><stop offset="1" stop-color="rgba(110,231,183,0)"/></linearGradient>
+              <linearGradient id="bgJ" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FCD34D"/><stop offset="1" stop-color="rgba(252,211,77,0)"/></linearGradient>
+            </defs>
+          </svg>
+        </div>
+      </div>
+      <div class="panel" style="flex:.85"><i class="c2"></i><i class="c3"></i>
+        <div class="panel-title"><span class="bar"></span><h3>业务场景排行</h3><span class="en">BUSINESS SCENES</span></div>
+        <div class="scene-wrap">
+          <div id="chartScene" class="scene-chart"></div>
+          <div class="scene-list" id="sceneList"></div>
+        </div>
+      </div>
+    </div>
+    <!-- 右列 -->
+    <div class="col">
+      <div class="panel"><i class="c2"></i><i class="c3"></i>
+        <div class="panel-title"><span class="bar"></span><h3>调用来源分布</h3><span class="en">SOURCE DISTRIBUTION</span></div>
+        <div id="chartSource" class="chart"></div>
+      </div>
+      <div class="panel"><i class="c2"></i><i class="c3"></i>
+        <div class="panel-title"><span class="bar"></span><h3>Token 消耗构成（近7天）</h3><span class="en">TOKEN COMPOSITION</span></div>
+        <div id="chartToken" class="chart"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ================= 底部：三段式 ================= -->
+  <section class="bottom">
+    <!-- 块1：实时告警中心 -->
+    <div class="log-panel">
+      <div class="log-head"><span class="bar"></span><h3>实时告警中心</h3>
+        <span class="en" style="font-size:11px;color:#5C7DA6;letter-spacing:1px">ALERT CENTER</span>
+        <span class="live" style="margin-left:auto"><i></i>LIVE</span></div>
+      <div class="al-caps">
+        <div class="al-cap all"><b id="alAll">47</b><span>今日告警</span></div>
+        <div class="al-cap err"><b id="alErr">3</b><span>严重</span></div>
+        <div class="al-cap warn"><b id="alWarn">12</b><span>预警</span></div>
+      </div>
+      <div class="log-body" id="logAlert"><ul></ul></div>
+    </div>
+    <!-- 块2：各学院调用排行（奖牌榜） -->
+    <div class="log-panel">
+      <div class="log-head"><span class="bar"></span><h3>各学院调用排行</h3>
+        <span class="en" style="font-size:11px;color:#5C7DA6;letter-spacing:1px">COLLEGE RANKING</span>
+        <span class="live" style="margin-left:auto"><i></i>LIVE</span></div>
+      <div class="dep-wrap">
+        <div class="dep-top3" id="depTop3"></div>
+        <div class="dep-list" id="depList"></div>
+      </div>
+    </div>
+    <!-- 块3：算力资源监控 -->
+    <div class="log-panel">
+      <div class="log-head"><span class="bar"></span><h3>算力资源监控</h3>
+        <span class="en" style="font-size:11px;color:#5C7DA6;letter-spacing:1px">COMPUTE POWER</span>
+        <span class="live" style="margin-left:auto"><i></i>LIVE</span></div>
+      <div class="res-wrap" id="resWrap"></div>
+      <div class="qps-bar">实时吞吐 <b id="qpsBar">12</b> QPS<span class="sep"></span>GPU 集群 <b style="color:#6EE7B7" id="gpuNodes">6/8</b> 节点在线</div>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ============ 主题色 ============ */
+var C={blue:'#3B82F6',deep:'#2563EB',sky:'#38BDF8',cyan:'#06B6D4',green:'#10B981',
+       amber:'#F59E0B',orange:'#F97316',red:'#EF4444',axis:'#5C7DA6',split:'rgba(64,140,255,.12)'};
+
+/* ============ 数据持久化：localStorage 防刷新回退穿帮（跨天自动重置） ============ */
+var LSK='wxut_dash_v3';
+var SD=null;
+try{var _raw=localStorage.getItem(LSK);if(_raw){var _o=JSON.parse(_raw);
+  if(_o.ts&&new Date(_o.ts).toDateString()===new Date().toDateString())SD=_o;}}catch(e){}
+function saveState(){
+  try{localStorage.setItem(LSK,JSON.stringify({
+    ts:Date.now(),trend:trendData,trendOk:trendOk,rank:rankVals,
+    twin:twinBuildings.map(function(b){return b.v}),
+    scenes:scenes.map(function(s){return s.v}),
+    depts:DEPTS.map(function(d){return{n:d.n,v:d.v,tr:d.tr}}),
+    res:RES.map(function(r){return r.v}),
+    token:tokenData,al:AL_CNT,
+    kpi:[0,kpiState[1].v,kpiState[2].v,kpiState[3].v,kpiState[4].v,kpiState[5].v]
+  }))}catch(e){}
+}
+
+/* ============ 屏幕等比缩放 ============ */
+function fitScreen(){
+  var s=document.getElementById('screen');
+  var k=Math.min(innerWidth/1920,innerHeight/1080);
+  s.style.transform='scale('+k+')';
+  s.style.left=(innerWidth-1920*k)/2+'px';
+  s.style.top=(innerHeight-1080*k)/2+'px';
+}
+addEventListener('resize',fitScreen);fitScreen();
+
+/* ============ 时钟 ============ */
+var WEEK=['日','一','二','三','四','五','六'];
+function tick(){
+  var d=new Date();
+  document.getElementById('hDate').textContent=
+    d.getFullYear()+'年'+String(d.getMonth()+1).padStart(2,'0')+'月'+String(d.getDate()).padStart(2,'0')+'日 星期'+WEEK[d.getDay()];
+  document.getElementById('hClock').textContent=
+    String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+}
+tick();setInterval(tick,1000);
+
+/* ============ 全屏切换 ============ */
+var fsBtn=document.getElementById('fsBtn');
+fsBtn.onclick=function(){
+  if(document.fullscreenElement){document.exitFullscreen()}
+  else{document.documentElement.requestFullscreen().catch(function(){})}
+};
+document.addEventListener('fullscreenchange',function(){
+  var on=!!document.fullscreenElement;
+  fsBtn.classList.toggle('on',on);
+  fsBtn.title=on?'退出全屏':'全屏显示';
+});
+
+/* ============ 公共 ECharts 样式 ============ */
+function baseAxis(){return{axisLine:{lineStyle:{color:'rgba(64,140,255,.25)'}},
+  axisLabel:{color:C.axis,fontSize:11},splitLine:{lineStyle:{color:C.split}},axisTick:{show:false}}}
+function tooltip(extra){return Object.assign({backgroundColor:'rgba(8,20,45,.92)',borderColor:'rgba(59,130,246,.4)',
+  textStyle:{color:'#DFF1FF',fontSize:12}},extra||{})}
+
+/* ============ 1. 今日调用趋势（双系列面积折线） ============ */
+var hours=[];for(var i=0;i<24;i++)hours.push(String(i).padStart(2,'0')+':00');
+var trendData=[],trendOk=[];
+for(i=0;i<24;i++){var b=26+Math.sin(i/3.6)*15+i*9+Math.random()*22;trendData.push(Math.round(b));trendOk.push(Math.round(b*(0.986+Math.random()*.012)))}
+if(SD&&SD.trend){trendData=SD.trend;trendOk=SD.trendOk}
+var chartTrend=echarts.init(document.getElementById('chartTrend'));
+var optTrend={grid:{left:42,right:14,top:34,bottom:24},
+  tooltip:tooltip({trigger:'axis'}),
+  legend:{data:['调用量','成功量'],textStyle:{color:C.axis,fontSize:11},itemWidth:14,itemHeight:8,right:10,top:2},
+  xAxis:Object.assign(baseAxis(),{type:'category',data:hours,boundaryGap:false,axisLabel:{color:C.axis,fontSize:10,interval:3}}),
+  yAxis:Object.assign(baseAxis(),{type:'value',name:'次',nameTextStyle:{color:C.axis,fontSize:10},splitNumber:4,
+    axisLabel:{color:C.axis,fontSize:10}}),
+  series:[
+    {name:'调用量',type:'line',smooth:.45,symbol:'none',data:trendData,
+      lineStyle:{width:2.5,color:C.blue,shadowColor:'rgba(59,130,246,.6)',shadowBlur:10},
+      areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(59,130,246,.38)'},{offset:1,color:'rgba(59,130,246,.02)'}])}},
+    {name:'成功量',type:'line',smooth:.45,symbol:'none',data:trendOk,
+      lineStyle:{width:2,color:C.cyan,shadowColor:'rgba(6,182,212,.5)',shadowBlur:8},
+      areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'rgba(6,182,212,.22)'},{offset:1,color:'rgba(6,182,212,.02)'}])}}
+  ]};
+chartTrend.setOption(optTrend);
+
+/* ============ 2. 热门智能体应用 TOP10 ============ */
+var rankNames=['智能推荐智能体','智能填报智能体','日常管理智能体','心理健康智能体','职业规划智能体','课件制作智能体','课程建设智能体','科研项目管理智能体','校园安防智能体','一卡通综合服务智能体'];
+var rankVals=[573,476,394,308,237,185,142,106,79,57];
+if(SD&&SD.rank){SD.rank.forEach(function(v,k){if(rankVals[k]!=null)rankVals[k]=v})}
+var chartRank=echarts.init(document.getElementById('chartRank'));
+var optRank={grid:{left:140,right:48,top:6,bottom:16},
+  tooltip:tooltip({trigger:'axis',axisPointer:{type:'shadow'},formatter:function(p){return p[0].name+'<br/>调用量：<b>'+p[0].value.toLocaleString('en-US')+' 次</b>'}}),
+  xAxis:{type:'value',splitLine:{lineStyle:{color:C.split}},axisLabel:{color:C.axis,fontSize:10},axisTick:{show:false},axisLine:{show:false}},
+  yAxis:{type:'category',data:rankNames,inverse:true,axisLine:{lineStyle:{color:'rgba(64,140,255,.25)'}},
+    axisTick:{show:false},axisLabel:{color:'#9CC7FF',fontSize:10.5}},
+  series:[{type:'bar',data:rankVals,barWidth:9,
+    itemStyle:{borderRadius:[0,4,4,0],
+      color:new echarts.graphic.LinearGradient(0,0,1,0,[
+        {offset:0,color:'#1D4ED8'},{offset:.55,color:'#3B82F6'},{offset:1,color:'#38BDF8'}])},
+    label:{show:true,position:'right',color:'#8FB8E8',fontSize:10,formatter:function(p){return p.value.toLocaleString('en-US')}},
+    showBackground:true,backgroundStyle:{color:'rgba(64,140,255,.07)',borderRadius:[0,4,4,0]}}]};
+chartRank.setOption(optRank);
+
+/* ============ 3. 数字孪生校园热力 ============ */
+var twinBuildings=[
+  {id:'A',v:316,top:34},{id:'B',v:278,top:50},{id:'C',v:237,top:50},
+  {id:'D',v:205,top:240},{id:'E',v:174,top:240},{id:'F',v:158,top:356},
+  {id:'G',v:141,top:364},{id:'H',v:120,top:356},{id:'I',v:103,top:150},{id:'J',v:86,top:150}
+];
+if(SD&&SD.twin){SD.twin.forEach(function(v,k){if(twinBuildings[k])twinBuildings[k].v=v})}
+function twinHeat(v){return v>=270?'#38BDF8':v>=200?'#3B82F6':v>=130?'#10B981':'#F59E0B'}
+function updateTwin(){
+  var maxV=316;
+  twinBuildings.forEach(function(b){
+    document.getElementById('val-'+b.id).textContent=b.v.toLocaleString('en-US')+' 次';
+    var dot=document.getElementById('dot-'+b.id);
+    dot.setAttribute('r',(2.8+b.v/maxV*1.8).toFixed(1));
+    dot.setAttribute('fill',twinHeat(b.v));
+    var beam=document.getElementById('beam-'+b.id);
+    var h=Math.round(10+b.v/maxV*24);
+    beam.setAttribute('height',h);
+    beam.setAttribute('y',b.top-h);
+  });
+  var qps=Math.round(8+Math.random()*17);
+  document.getElementById('qpsVal').textContent=qps.toLocaleString('en-US');
+}
+updateTwin();
+
+/* ============ 4. 业务场景排行 ============ */
+var scenes=[
+  {n:'教务教学',v:716,c:C.blue},{n:'学生管理',v:604,c:C.sky},{n:'科研管理',v:468,c:C.cyan},
+  {n:'后勤管理',v:326,c:C.green},{n:'教师工作',v:260,c:C.amber},{n:'其他特色',v:160,c:C.orange}
+];
+if(SD&&SD.scenes){SD.scenes.forEach(function(v,k){if(scenes[k])scenes[k].v=v})}
+var chartScene=echarts.init(document.getElementById('chartScene'));
+var optScene={tooltip:tooltip({trigger:'item',formatter:function(p){return p.name+'<br/>调用量：<b>'+p.value.toLocaleString('en-US')+' 次</b>'}}),
+  graphic:[
+    {id:'sceneTotal',type:'text',left:'center',top:'40%',style:{text:String(scenes.reduce(function(a,b){return a+b.v},0).toLocaleString('en-US')),fontSize:17,fontWeight:700,fill:'#EAF5FF',textAlign:'center'}},
+    {type:'text',left:'center',top:'53%',style:{text:'今日调用 (次)',fontSize:10,fill:'#5C7DA6',textAlign:'center'}}
+  ],
+  series:[{type:'pie',radius:['55%','78%'],center:['50%','50%'],
+    itemStyle:{borderColor:'rgba(8,18,38,.9)',borderWidth:2,borderRadius:3},
+    label:{show:false},emphasis:{scaleSize:5},
+    data:scenes.map(function(s){return{name:s.n,value:s.v,itemStyle:{color:s.c,shadowColor:s.c,shadowBlur:10}}})}]};
+chartScene.setOption(optScene);
+function renderSceneList(){
+  var max=scenes[0].v;
+  document.getElementById('sceneList').innerHTML=scenes.map(function(s){
+    return '<div class="sc-item"><span class="sc-name">'+s.n+'</span>'+
+      '<span class="sc-bar"><i style="width:'+(s.v/max*100)+'%;background:linear-gradient(90deg,'+s.c+',rgba(56,189,248,.3))"></i></span>'+
+      '<span class="sc-val">'+s.v.toLocaleString('en-US')+'<em>次</em></span></div>';
+  }).join('');
+}
+renderSceneList();
+
+/* ============ 5. 各学院调用排行（奖牌榜 · DOM 渲染） ============ */
+var DEPTS=[
+  {n:'物联网工程学院',v:336,tr:1},{n:'机械工程学院',v:278,tr:1},
+  {n:'控制工程学院',v:237,tr:1},{n:'集成电路学院',v:193,tr:0},
+  {n:'汽车与交通工程学院',v:168,tr:1},{n:'管理学院',v:137,tr:0},
+  {n:'财经学院',v:110,tr:1},{n:'设计艺术学院',v:86,tr:0},
+  {n:'文旅学院',v:68,tr:1},{n:'爱尔兰学院',v:44,tr:0}
+];
+if(SD&&SD.depts){DEPTS.forEach(function(d){for(var k=0;k<SD.depts.length;k++)
+  if(SD.depts[k].n===d.n){d.v=SD.depts[k].v;d.tr=SD.depts[k].tr;break}});
+  DEPTS.sort(function(a,b){return b.v-a.v});}
+function renderDept(){
+  var max=DEPTS[0].v,t3='';
+  for(var i=0;i<3;i++){var d=DEPTS[i];
+    t3+='<div class="dep-row g'+(i+1)+'">'
+      +'<div class="medal">'+(i+1)+'</div>'
+      +'<div class="dep-name">'+d.n+'</div>'
+      +'<div class="dep-val">'+d.v.toLocaleString('en-US')+'<em>次</em></div></div>';}
+  document.getElementById('depTop3').innerHTML=t3;
+  var lis='';
+  for(var j=3;j<DEPTS.length;j++){var e=DEPTS[j];
+    lis+='<div class="dep-li"><span class="no">'+(j+1)+'</span>'
+      +'<span class="nm">'+e.n+'</span>'
+      +'<span class="bar"><i style="width:'+(e.v/max*100).toFixed(1)+'%"></i></span>'
+      +'<span class="vl">'+e.v.toLocaleString('en-US')+'</span>'
+      +'<span class="tr '+(e.tr?'up':'dn')+'">'+(e.tr?'▲':'▼')+'</span></div>';}
+  document.getElementById('depList').innerHTML=lis;
+}
+renderDept();
+
+/* ============ 5b. 算力资源圆环仪表 ============ */
+var RES=[{n:'CPU',v:72,c:'#38BDF8'},{n:'GPU',v:65,c:'#10B981'},{n:'内存',v:58,c:'#F59E0B'}];
+if(SD&&SD.res){SD.res.forEach(function(v,k){if(RES[k])RES[k].v=v})}
+function renderGauges(){
+  var R=30,CIR=(2*Math.PI*R).toFixed(1);
+  document.getElementById('resWrap').innerHTML=RES.map(function(r){
+    var dash=(CIR*r.v/100).toFixed(1);
+    return '<div class="gauge"><svg viewBox="0 0 78 78">'
+      +'<circle cx="39" cy="39" r="'+R+'" fill="none" stroke="rgba(64,140,255,.12)" stroke-width="6"/>'
+      +'<circle cx="39" cy="39" r="'+R+'" fill="none" stroke="'+r.c+'" stroke-width="6" stroke-linecap="round" '
+      +'stroke-dasharray="'+dash+' '+CIR+'" transform="rotate(-90 39 39)" '
+      +'style="filter:drop-shadow(0 0 4px '+r.c+');transition:stroke-dasharray .8s ease"/>'
+      +'<text x="39" y="44" text-anchor="middle" font-size="15" font-weight="700" fill="#EAF5FF" '
+      +'font-family="Bahnschrift,Segoe UI">'+r.v+'%</text>'
+      +'</svg><div class="gl">'+r.n+'</div></div>';
+  }).join('');
+}
+renderGauges();
+
+/* ============ 5. 调用来源分布（环形图·多色系） ============ */
+var chartSource=echarts.init(document.getElementById('chartSource'));
+var sourceData=[
+  {name:'校园门户 PC端',value:36.8,color:C.blue},
+  {name:'移动端 App',value:28.4,color:C.sky},
+  {name:'API 系统对接',value:17.6,color:C.cyan},
+  {name:'企业微信入口',value:10.2,color:C.green},
+  {name:'校内智能终端',value:4.6,color:C.amber},
+  {name:'其他',value:2.4,color:C.orange}
+];
+var optSource={tooltip:tooltip({trigger:'item',formatter:function(p){return p.name+'<br/>占比：<b>'+p.value+'%</b>'}}),
+  legend:{orient:'vertical',right:6,top:'center',itemWidth:10,itemHeight:10,itemGap:12,
+    textStyle:{color:'#9CC7FF',fontSize:11.5},formatter:function(n){return n}},
+  series:[{type:'pie',radius:['52%','74%'],center:['34%','50%'],
+    avoidLabelOverlap:true,itemStyle:{borderColor:'rgba(8,18,38,.9)',borderWidth:3,borderRadius:4},
+    label:{show:false},emphasis:{scaleSize:6,
+      label:{show:true,fontSize:13,fontWeight:700,color:'#DFF1FF',formatter:'{d}%'}},
+    data:sourceData.map(function(d){return{name:d.name,value:d.value,itemStyle:{color:d.color,shadowColor:d.color,shadowBlur:10}}})}]};
+chartSource.setOption(optSource);
+
+/* ============ 6. Token 消耗构成（近7天·堆叠柱状） ============ */
+var days=['08-09','08-10','08-11','08-12','08-13','08-14','08-15'];
+function genToken(){return[
+  days.map(function(){return Math.round(5.2+Math.random()*2)}),
+  days.map(function(){return Math.round(2.6+Math.random()*1.2)}),
+  days.map(function(){return Math.round(0.8+Math.random()*0.6)})];}
+var tokenData=genToken();
+if(SD&&SD.token){tokenData=SD.token}
+var chartToken=echarts.init(document.getElementById('chartToken'));
+var optToken={grid:{left:38,right:12,top:34,bottom:22},
+  tooltip:tooltip({trigger:'axis',axisPointer:{type:'shadow'},formatter:function(ps){var s=ps[0].name+'<br/>';ps.forEach(function(p){s+=p.marker+p.seriesName+'：'+(p.value*100).toLocaleString('en-US')+' 万 Tokens<br/>'});return s}}),
+  legend:{data:['输入 Token','输出 Token','嵌入向量'],textStyle:{color:C.axis,fontSize:10.5},itemWidth:12,itemHeight:8,right:6,top:2},
+  xAxis:Object.assign(baseAxis(),{type:'category',data:days,axisLabel:{color:C.axis,fontSize:10}}),
+  yAxis:Object.assign(baseAxis(),{type:'value',name:'百万',nameTextStyle:{color:C.axis,fontSize:10},splitNumber:3,axisLabel:{color:C.axis,fontSize:10}}),
+  series:[
+    {name:'输入 Token',type:'bar',stack:'t',data:tokenData[0],barWidth:16,itemStyle:{color:C.blue,borderRadius:[0,0,0,0]}},
+    {name:'输出 Token',type:'bar',stack:'t',data:tokenData[1],itemStyle:{color:C.cyan}},
+    {name:'嵌入向量',type:'bar',stack:'t',data:tokenData[2],itemStyle:{color:C.green,borderRadius:[3,3,0,0]}}
+  ]};
+chartToken.setOption(optToken);
+
+/* ============ 底部实时告警 ============ */
+function pad(n){return String(n).padStart(2,'0')}
+function nowHM(){var d=new Date();return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())}
+function rnd(a){return a[Math.floor(Math.random()*a.length)]}
+function pushLog(ulId,item){
+  var ul=document.querySelector('#'+ulId+' ul');
+  var li=document.createElement('li');li.className='new';li.innerHTML=item;
+  ul.appendChild(li);
+  while(ul.children.length>14)ul.removeChild(ul.firstChild);
+  var box=document.getElementById(ulId);box.scrollTop=box.scrollHeight;
+}
+/* ---- 告警池（分级：err 带恢复文案，真实高校平台频率/比例） ---- */
+var ERR_POOL=[
+  {t:function(){return rnd(['deepeek-r1-671b','qwen3','QWQ-32B'])+' 推理超时 '+(2.5+Math.random()*1.8).toFixed(1)+'s，已自动切换备用节点'},
+   rec:function(m){return m+' 已切回主节点，服务恢复正常'}},
+  {t:function(){return '智能制造工程中心 GPU 节点 0'+Math.ceil(Math.random()*4)+' 心跳丢失，训练任务已迁移'},
+   rec:function(m){return m.replace('心跳丢失，训练任务已迁移','重新上线，负载均衡已恢复')}},
+  {t:function(){return '智能推荐智能体并发达 '+Math.floor(40+Math.random()*50)+'，已触发限流保护（上课高峰）'},
+   rec:function(){return '并发回落至安全水位，限流已自动解除'}}
+];
+var WARN_POOL=[
+  {t:function(){return '智能填报任务排队 '+Math.floor(20+Math.random()*40)+'，预计延迟 '+(5+Math.floor(Math.random()*15))+' 分钟'}},
+  {t:function(){return '智能制造工程中心 GPU 集群负载 '+(86+Math.floor(Math.random()*8))+'%，已启动弹性扩容'}},
+  {t:function(){return '宿舍区晚高峰出口带宽占用 '+(72+Math.floor(Math.random()*12))+'%'}},
+  {t:function(){return '校园网出口延迟升至 '+(80+Math.floor(Math.random()*50))+'ms，链路自动切换中'}},
+  {t:function(){return rnd(['qwen2.5-instruct','bge-reranker-v2-m3'])+' 平均响应时长升至 '+(1.8+Math.random()).toFixed(2)+'s'}}
+];
+var INFO_POOL=[
+  {t:function(){return '弹性扩容完成：新增 '+Math.floor(1+Math.random()*3)+' 个推理实例'}},
+  {t:function(){return '智能推荐智能体缓存命中率优化至 '+(86+Math.floor(Math.random()*9))+'%'}},
+  {t:function(){return '新生 AI 素养通识课完成第 '+Math.floor(2+Math.random()*5)+' 批次开课'}},
+  {t:function(){return '图书馆 AI 阅览终端完成固件升级（'+Math.floor(6+Math.random()*14)+' 台）'}},
+  {t:function(){return rnd(['qwen3','智造锡言校本大模型'])+' '+rnd(['v3.2.1','v4.0.2'])+' 热更新生效，服务零中断'}},
+  {t:function(){return '知识库增量同步完成（'+Math.floor(800+Math.random()*600)+' 篇文档）'}},
+  {t:function(){return '每日全量安全审计完成，未发现异常'}}
+];
+var ALERT_CLS={err:'st-err',warn:'st-warn',info:'st-ok'};
+var ALERT_TXT={err:'严重',warn:'预警',info:'信息'};
+/* 初始计数与当前时刻挂钩（按全天节奏曲线插值，避免任何时候打开都是同一数字） */
+function initAlCount(){
+  var d=new Date(),h=d.getHours()+d.getMinutes()/60;
+  var tbl=[[0,1],[6,1],[7,1],[8,2],[11,5],[12,5],[13,5],[14,5],[16,8],
+    [17,8],[18,8],[19,8],[21,10],[22,10],[24,10]];
+  var all=tbl[0][1];
+  for(var k=1;k<tbl.length;k++){
+    if(h>=tbl[k-1][0]&&h<=tbl[k][0]){
+      var p=(h-tbl[k-1][0])/(tbl[k][0]-tbl[k-1][0]);
+      all=Math.round(tbl[k-1][1]+(tbl[k][1]-tbl[k-1][1])*p);break;
+    }
+  }
+  return{all:all,err:Math.min(1,Math.floor(all/8)),warn:Math.round(all*.28)};
+}
+var AL_CNT=initAlCount();
+if(SD&&SD.al){AL_CNT=SD.al}
+function alSync(){
+  document.getElementById('alAll').textContent=AL_CNT.all;
+  document.getElementById('alErr').textContent=AL_CNT.err;
+  document.getElementById('alWarn').textContent=AL_CNT.warn;
+}
+function alColor(lv){return lv==='err'?C.red:(lv==='warn'?C.amber:C.blue)}
+function alHTML(lv,desc,ts){
+  return '<span class="log-time">'+ts+'</span>'+
+    '<span class="log-dot" style="background:'+alColor(lv)+';box-shadow:0 0 5px '+alColor(lv)+'"></span>'+
+    '<span class="log-desc">'+desc+'</span>'+
+    '<span class="log-status '+ALERT_CLS[lv]+'">'+ALERT_TXT[lv]+'</span>';
+}
+function fmtTs(d){return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())}
+/* 去重选取：近期用过的模板不再重复出现 */
+var alRecent=[];
+function pickFrom(pool){
+  var cand=pool.filter(function(p){return alRecent.indexOf(p)<0});
+  if(!cand.length){alRecent=[];cand=pool}
+  var pick=cand[Math.floor(Math.random()*cand.length)];
+  alRecent.push(pick);if(alRecent.length>5)alRecent.shift();
+  return pick;
+}
+/* 时段感知间隔（250 人量级低量平台：全天约 10~12 条）
+   密集窗口(上课/晚自习核心) 40~80min · 普通 90~150min · 平静 3~5h · 深夜 6~10h */
+function alertGap(){
+  var h=new Date().getHours();
+  if([8,9,10,15,16,20,21].indexOf(h)>=0)return 2400000+Math.random()*2400000;
+  if([7,11,14,17,19,22,23].indexOf(h)>=0)return 5400000+Math.random()*3600000;
+  if([0,12,13,18].indexOf(h)>=0)return 10800000+Math.random()*7200000;
+  return 21600000+Math.random()*14400000;
+}
+var alTimer=null;
+function scheduleAlert(){
+  if(alTimer)clearTimeout(alTimer);
+  alTimer=setTimeout(pushAlert,alertGap());
+}
+var curAlert=null;
+function pushAlert(){
+  var r=Math.random(),lv;
+  if(r<.08&&AL_CNT.err<1)lv='err';       /* 严重占比约 8%，当日封顶 1 条 */
+  else if(r<.36)lv='warn';
+  else lv='info';
+  var pool=lv==='err'?ERR_POOL:lv==='warn'?WARN_POOL:INFO_POOL;
+  var pick=pickFrom(pool);curAlert=pick;
+  var desc=pick.t();
+  AL_CNT.all++;
+  if(lv==='err'){AL_CNT.err++;
+    var src=desc.split(' ')[0];
+    setTimeout(function(){                     /* 严重告警后 30~50s 跟进恢复通知 */
+      pushLog('logAlert',alHTML('info',pick.rec(src),fmtTs(new Date())));
+    },30000+Math.random()*20000);
+  }
+  else if(lv==='warn')AL_CNT.warn++;
+  alSync();
+  pushLog('logAlert',alHTML(lv,desc,fmtTs(new Date())));
+  saveState();
+  scheduleAlert();
+}
+alSync();
+/* 预填 5 条历史告警：时间戳按间隔往前回溯，级别真实配比（1 预警 + 4 信息） */
+(function(){
+  var pre=[
+    {lv:'warn',p:WARN_POOL[1]},{lv:'info',p:INFO_POOL[1]},{lv:'info',p:INFO_POOL[0]},
+    {lv:'info',p:INFO_POOL[4]},{lv:'info',p:INFO_POOL[3]}
+  ];
+  var back=0,now=Date.now();
+  pre.forEach(function(a){
+    back+=alertGap()*1.2;
+    pushLog('logAlert',alHTML(a.lv,a.p.t(),fmtTs(new Date(now-back))));
+  });
+  alRecent=pre.map(function(a){return a.p});
+})();
+scheduleAlert();
+
+/* ============ KPI 数字滚动 ============ */
+function tweenNum(el,from,to,dec,fmt){
+  var t0=null,dur=1100;
+  function step(ts){
+    if(!t0)t0=ts;var p=Math.min((ts-t0)/dur,1);
+    var e=1-Math.pow(1-p,3);
+    var v=from+(to-from)*e;
+    el.textContent=dec?fmt(v.toFixed(dec)):fmt(Math.round(v));
+    if(p<1)requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+function fmtInt(v){return v.toLocaleString('en-US')}
+function fmtF(v){return v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+var kpiState=[{v:11,dec:0,f:fmtInt},{v:2580,dec:0,f:fmtInt},{v:250,dec:0,f:fmtInt},
+  {v:11684633,dec:0,f:fmtInt},{v:1.28,dec:2,f:fmtF},{v:99.92,dec:2,f:fmtF}];
+var kpiEls=[1,2,3,4,5,6].map(function(n){return document.getElementById('kpi'+n)});
+if(SD&&SD.kpi){
+  for(var ki=1;ki<6;ki++)if(SD.kpi[ki]!=null)kpiState[ki].v=SD.kpi[ki];
+}
+for(var kj=1;kj<6;kj++)kpiEls[kj].textContent=kpiState[kj].f(kpiState[kj].v);
+setInterval(function(){
+  kpiState.forEach(function(s,i){
+    var nv;
+    if(i===1){nv=s.v+(Math.random()<.2?1:0)}
+    else if(i===3){nv=s.v+Math.round(500+Math.random()*300)}
+    else if(i===4){nv=+(s.v+(Math.random()*.08-.04)).toFixed(2);nv=Math.min(2.2,Math.max(.8,nv))}
+    else if(i===5){nv=+(s.v+(Math.random()*.03-.015)).toFixed(2);nv=Math.min(100,Math.max(99,nv))}
+    else if(i===0){nv=s.v}
+    else{nv=+(s.v*(1+(Math.random()*.02-.01))).toFixed(s.dec)}
+    if(i===2)nv=Math.min(300,Math.max(200,Math.round(nv)));
+    tweenNum(kpiEls[i],s.v,nv,s.dec,s.f);s.v=nv;
+  });
+  saveState();
+},5000);
+
+/* ============ 图表实时刷新 ============ */
+setInterval(function(){
+  /* 趋势图滚动窗口 */
+  trendData.shift();trendOk.shift();
+  var last=trendData[trendData.length-1];
+  var b=Math.max(18,Math.round(last+(124-last)*.25+Math.random()*40-20));trendData.push(b);
+  trendOk.push(Math.round(b*(.986+Math.random()*.012)));
+  chartTrend.setOption({series:[{data:trendData},{data:trendOk}]});
+  /* 排行微调（只增：今日累积量只会长） */
+  rankVals=rankVals.map(function(v){return v+Math.max(1,Math.round(v*Math.random()*.003))});
+  chartRank.setOption({series:[{data:rankVals}]});
+  /* 数字孪生校园更新（只增） */
+  twinBuildings.forEach(function(b){b.v+=Math.max(1,Math.round(b.v*Math.random()*.004))});
+  updateTwin();
+  /* 场景微调（只增后归一到 KPI 今日调用总量，保持口径一致） */
+  scenes.forEach(function(s){s.v+=Math.max(1,Math.round(s.v*Math.random()*.004))});
+  var kTarget=(typeof kpiState!=='undefined'&&kpiState[1])?kpiState[1].v:2580;
+  var rawTot=scenes.reduce(function(a,b){return a+b.v},0);
+  scenes.forEach(function(s){s.v=Math.max(100,Math.round(s.v*kTarget/rawTot))});
+  var max=scenes[0].v;
+  var sceneTotal=scenes.reduce(function(a,b){return a+b.v},0);
+  chartScene.setOption({graphic:[{id:'sceneTotal',style:{text:sceneTotal.toLocaleString('en-US')}}],
+    series:[{data:scenes.map(function(s){return{name:s.n,value:s.v,itemStyle:{color:s.c,shadowColor:s.c,shadowBlur:10}}})}]});
+  document.getElementById('sceneList').innerHTML=scenes.map(function(s){
+    return '<div class="sc-item"><span class="sc-name">'+s.n+'</span>'+
+      '<span class="sc-bar"><i style="width:'+(s.v/max*100)+'%;background:linear-gradient(90deg,'+s.c+',rgba(56,189,248,.3))"></i></span>'+
+      '<span class="sc-val">'+s.v.toLocaleString('en-US')+'<em>次</em></span></div>';
+  }).join('');
+  /* 学院榜单微调（只增）+ 重排 */
+  DEPTS.forEach(function(d){d.v+=Math.max(1,Math.round(d.v*Math.random()*.003));
+    if(Math.random()<.05)d.tr=d.tr?0:1});
+  DEPTS.sort(function(a,b){return b.v-a.v});
+  renderDept();
+  /* 算力圆环 + QPS 联动 */
+  RES.forEach(function(r){r.v=Math.max(15,Math.min(95,r.v+Math.round(Math.random()*6-3)))});
+  renderGauges();
+  document.getElementById('qpsBar').textContent=(8+Math.round(Math.random()*17)).toLocaleString('en-US');
+  if(Math.random()<.2)document.getElementById('gpuNodes').textContent=(5+Math.floor(Math.random()*3))+'/8';
+  /* Token 滚动（按基线量级生成新一天数据，防漂移） */
+  var nt=genToken();tokenData.forEach(function(a,i){a.shift();a.push(nt[i][0])});
+  chartToken.setOption({series:[{data:tokenData[0]},{data:tokenData[1]},{data:tokenData[2]}]});
+  saveState();
+},4000);
+</script>
+</body>
+</html>

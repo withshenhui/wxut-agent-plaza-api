@@ -6,13 +6,14 @@ INSERT INTO sys_user (username, password, nickname, role, status) VALUES
 ON DUPLICATE KEY UPDATE password = VALUES(password);
 
 -- Categories
-INSERT INTO agent_category (category_key, label, description, sort_order, status) VALUES
-('student',   '学生管理', '学生日常管理相关智能体', 1, 1),
-('teacher',   '教师工作', '教师工作相关智能体',     2, 1),
-('education', '教务教学', '教务教学相关智能体',     3, 1),
-('research',  '科研管理', '科研管理相关智能体',     4, 1),
-('logistics', '后勤管理', '后勤管理相关智能体',     5, 1),
-('other',     '其他特色', '其他特色智能体',         6, 1);
+INSERT INTO agent_category (id, category_key, label, description, sort_order, status) VALUES
+(8, 'institution','制度建设', '学校制度查询与管理相关智能体', 0, 1),
+(1, 'student',   '学生管理', '学生日常管理相关智能体', 2, 1),
+(2, 'teacher',   '教师工作', '教师工作相关智能体',     3, 1),
+(3, 'education', '教务教学', '教务教学相关智能体',     4, 1),
+(4, 'research',  '科研管理', '科研管理相关智能体',     5, 1),
+(5, 'logistics', '后勤管理', '后勤管理相关智能体',     6, 1),
+(6, 'other',     '其他特色', '其他特色智能体',         7, 1);
 
 -- Agents - student
 INSERT INTO agent (id, name, icon, description, detail, category_id, sort_order) VALUES
@@ -133,7 +134,8 @@ INSERT INTO model (id, name, provider, type, description, release_date, category
 (5, 'bge-m3',                  'BAAI',  '嵌入',      '新一代多语言嵌入模型，支持多语言文本向量化，优化检索与语义匹配任务。',                             '2025-03-01', 'general', 'https://assets.watone.cn/model_image/zhiyuan.svg',  5),
 (6, 'bge-reranker-v2-m3',      'BAAI',  'Reranker',  '基于BGE-M3优化的高性能重排模型，增强跨语言检索结果精度。',                                                       '2025-03-01', 'general', 'https://assets.watone.cn/model_image/zhiyuan.svg',  6),
 (7, 'QWQ-32B',                 '震泽',  '大模型',    'QWQ-32B通过大规模模型学习，实现了在数学推理和代码生成等核心场景中的卓越表现。',             '2025-03-01', 'general', 'https://assets.watone.cn/model_image/qwen2.svg',    7),
-(8, 'qwen3',                   '震泽',  '大模型',    'Qwen-3.2在推理、指令理解、代理能力和多语言支持方面取得了突破性的进展。',                   '2025-04-29', 'general', 'https://assets.watone.cn/model_image/qwen2.svg',    8);
+(8, 'qwen3',                   '震泽',  '大模型',    'Qwen-3.2在推理、指令理解、代理能力和多语言支持方面取得了突破性的进展。',                   '2025-04-29', 'general', 'https://assets.watone.cn/model_image/qwen2.svg',    8),
+(12, 'deepseek-v4-flash',      '震泽',  '通用推理',  'DeepSeek V4 Flash，稀疏激活的高性价比通用推理模型，1M 上下文，学院数据查询智能体默认使用。', '2026-01-01', 'general', 'https://assets.watone.cn/model_image/deepseek.svg', 9);
 
 -- Models - vertical
 INSERT INTO model (id, name, provider, type, description, release_date, category, icon_url, sort_order) VALUES
@@ -145,7 +147,32 @@ INSERT INTO model (id, name, provider, type, description, release_date, category
 INSERT INTO model_tag (model_id, tag_name) VALUES
 (1, '限时免费'), (2, '限时免费'), (3, '限时免费'), (4, '限时免费'),
 (5, '接入中'), (5, '限时免费'), (6, '限时免费'), (7, '限时免费'), (8, '限时免费'),
+(12, '通用推理'), (12, '默认'),
 (9, '校本'), (9, '特色'), (10, '汽车'), (10, '专业'), (11, '人工智能'), (11, '专业');
+
+-- Agents - institution（制度建设，external_url 均为 NULL，管理后台可再编辑）
+INSERT INTO agent (id, name, icon, description, detail, category_id, sort_order) VALUES
+(40, '党建与思政制度智能体',       '🚩', '提供党建与思政制度咨询和查询服务。',   '这是一个专业的党建与思政制度智能体，可以帮助你了解党建与思政相关制度文件。',   8, 1),
+(41, '教育教学管理制度智能体',     '📚', '提供教育教学管理制度的查询和解读。',   '这是一个专业的教育教学管理制度智能体，可以帮助你查询教育教学管理相关制度。', 8, 2),
+(42, '科技研发制度智能体',         '🔬', '提供科技研发制度的查询和咨询服务。',   '这是一个专业的科技研发制度智能体，可以帮助你了解科研管理相关制度规定。',     8, 3),
+(43, '社会服务制度智能体',         '🤝', '提供社会服务制度的查询和咨询服务。',   '这是一个专业的社会服务制度智能体，可以帮助你了解社会服务相关制度。',         8, 4),
+(44, '财务与资产管理制度智能体',   '💰', '提供财务与资产管理制度的查询服务。',   '这是一个专业的财务与资产管理制度智能体，可以帮助你查询财务与资产管理相关制度。', 8, 5),
+(45, '人事管理制度智能体',         '👥', '提供人事管理制度的查询和解读服务。',   '这是一个专业的人事管理制度智能体，可以帮助你了解人事管理相关制度规定。',     8, 6),
+(46, '服务保障制度智能体',         '🛠️', '提供服务保障制度的查询和咨询服务。',   '这是一个专业的服务保障制度智能体，可以帮助你了解后勤服务保障相关制度。',     8, 7),
+(47, '民主监督制度智能体',         '⚖️', '提供民主监督制度的查询和咨询服务。',   '这是一个专业的民主监督制度智能体，可以帮助你了解民主监督相关制度规定。',     8, 8),
+(48, '其他制度智能体',             '📋', '提供其他规章制度的查询和咨询服务。',   '这是一个专业的其他制度智能体，可以帮助你查询学校其他规章制度。',             8, 9);
+
+-- Agent Tags - institution
+INSERT INTO agent_tag (agent_id, tag_name) VALUES
+(40,'党建'),(40,'思政'),(40,'制度'),
+(41,'教学'),(41,'管理'),(41,'制度'),
+(42,'科研'),(42,'研发'),(42,'制度'),
+(43,'社会'),(43,'服务'),(43,'制度'),
+(44,'财务'),(44,'资产'),(44,'制度'),
+(45,'人事'),(45,'管理'),(45,'制度'),
+(46,'服务'),(46,'保障'),(46,'制度'),
+(47,'民主'),(47,'监督'),(47,'制度'),
+(48,'其他'),(48,'规章'),(48,'制度');
 
 -- System Configs
 INSERT INTO sys_config (config_key, config_value, description) VALUES

@@ -43,7 +43,7 @@ public class SecurityConfig {
                 .antMatchers(HttpMethod.GET, "/api/v1/configs/*").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/files/download/**").permitAll()
                 .antMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                .antMatchers("/", "/index.html", "/assets/**", "/images/**", "/*.js", "/*.css", "/*.png", "/*.svg", "/*.ico").permitAll()
+                .antMatchers("/", "/index.html", "/assets/**", "/images/**", "/*.js", "/*.css", "/*.png", "/*.svg", "/*.ico", "/*.html").permitAll()
                 .antMatchers(HttpMethod.POST, "/api/v1/agents").hasRole("ADMIN")
                 .antMatchers(HttpMethod.PUT, "/api/v1/agents/**").hasRole("ADMIN")
                 .antMatchers(HttpMethod.DELETE, "/api/v1/agents/**").hasRole("ADMIN")

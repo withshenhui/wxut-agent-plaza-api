@@ -30,8 +30,17 @@ public class SysConfigServiceImpl implements SysConfigService {
 
     @Override
     public void updateByKey(String key, String value) {
-        SysConfig config = getByKey(key);
-        config.setConfigValue(value);
-        configMapper.updateById(config);
+        // 配置项不存在时自动创建（UPSERT），便于在线新增"大模型配置"等键
+        SysConfig config = configMapper.selectOne(
+                new LambdaQueryWrapper<SysConfig>().eq(SysConfig::getConfigKey, key));
+        if (config == null) {
+            config = new SysConfig();
+            config.setConfigKey(key);
+            config.setConfigValue(value);
+            configMapper.insert(config);
+        } else {
+            config.setConfigValue(value);
+            configMapper.updateById(config);
+        }
     }
 }
