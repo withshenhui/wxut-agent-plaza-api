@@ -29,6 +29,16 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CasConfig casConfig;
 
+    /**
+     * CAS 过滤器构造 service 时用 serverName + requestURI，而 requestURI 已含上下文路径
+     * （如 /agent-plaza/api/v1/sso/entry），因此 serverName 只能带 scheme://host:port，
+     * 否则拼出双上下文前缀导致 CAS 登录后回跳 404、ticket 验证 service 不匹配。
+     * JSON 端点（cas-login-url）不受影响，仍直接使用完整 clientServerUrl 拼接。
+     */
+    static String filterServerName(String clientServerUrl) {
+        return clientServerUrl.replaceAll("^(https?://[^/]+).*$", "$1");
+    }
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -71,7 +81,7 @@ public class SecurityConfig {
         registration.addUrlPatterns("/api/v1/auth/cas-login");
         registration.addUrlPatterns("/api/v1/sso/entry");
         registration.addInitParameter("casServerLoginUrl", casConfig.getServerLoginUrl());
-        registration.addInitParameter("serverName", casConfig.getClientServerUrl());
+        registration.addInitParameter("serverName", filterServerName(casConfig.getClientServerUrl()));
         registration.setOrder(1);
         return registration;
     }
@@ -83,7 +93,7 @@ public class SecurityConfig {
         registration.addUrlPatterns("/api/v1/auth/cas-login");
         registration.addUrlPatterns("/api/v1/sso/entry");
         registration.addInitParameter("casServerUrlPrefix", casConfig.getServerUrlPrefix());
-        registration.addInitParameter("serverName", casConfig.getClientServerUrl());
+        registration.addInitParameter("serverName", filterServerName(casConfig.getClientServerUrl()));
         registration.addInitParameter("redirectAfterValidation", "false");
         registration.addInitParameter("encoding", "UTF-8");
         registration.setOrder(2);
