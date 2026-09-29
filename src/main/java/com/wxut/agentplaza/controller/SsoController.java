@@ -4,14 +4,18 @@ import com.wxut.agentplaza.common.Result;
 import com.wxut.agentplaza.config.CasConfig;
 import com.wxut.agentplaza.config.SsoProperties;
 import com.wxut.agentplaza.entity.SysUser;
+import com.wxut.agentplaza.mapper.SysUserMapper;
 import com.wxut.agentplaza.security.JwtTokenProvider;
 import com.wxut.agentplaza.service.AuthService;
 import com.wxut.agentplaza.service.SsoTicketStore;
+import com.wxut.agentplaza.vo.TicketVO;
 import com.wxut.agentplaza.vo.UsernameVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jasig.cas.client.authentication.AttributePrincipal;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
@@ -34,6 +38,7 @@ public class SsoController {
     private final SsoProperties ssoProperties;
     private final JwtTokenProvider jwtTokenProvider;
     private final CasConfig casConfig;
+    private final SysUserMapper sysUserMapper;
 
     /** 锡锡平台前端错误回跳地址 */
     private static final String XIXI_FRONT_END = "http://210.28.144.49:8002";
@@ -109,6 +114,28 @@ public class SsoController {
         }
         UsernameVO vo = new UsernameVO();
         vo.setUsername(username);
+        return Result.success(vo);
+    }
+
+    /**
+     * 管理后台内嵌锡锡平台用：当前登录管理员凭 JWT 直接换一次性 ticket，
+     * 免 CAS 会话（管理员可能用账号密码登录，无学校 CAS 会话）。
+     */
+    @PostMapping("/ticket")
+    @PreAuthorize("hasRole('ADMIN')")
+    public Result<TicketVO> ticket(Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            return Result.error(401, "用户不存在");
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            return Result.error(403, "账号已被禁用");
+        }
+        String ticket = ticketStore.create(user.getUsername());
+        log.info("SSO ticket issued via admin token: username={}", user.getUsername());
+        TicketVO vo = new TicketVO();
+        vo.setTicket(ticket);
         return Result.success(vo);
     }
 
