@@ -1,6 +1,7 @@
 package com.wxut.agentplaza.controller;
 
 import com.wxut.agentplaza.common.Result;
+import com.wxut.agentplaza.config.CasOriginResolver;
 import com.wxut.agentplaza.config.SsoProperties;
 import com.wxut.agentplaza.entity.SysUser;
 import com.wxut.agentplaza.mapper.SysUserMapper;
@@ -37,6 +38,7 @@ public class SsoController {
     private final SsoProperties ssoProperties;
     private final JwtTokenProvider jwtTokenProvider;
     private final SysUserMapper sysUserMapper;
+    private final CasOriginResolver originResolver;
 
     /** 锡锡平台前端错误回跳地址 */
     private static final String XIXI_FRONT_END = "http://210.28.144.49:8002";
@@ -66,17 +68,18 @@ public class SsoController {
         try {
             SysUser user = authService.findOrCreateCasUser(uid, cn);
             if (user.getStatus() != null && user.getStatus() == 0) {
-                redirectError(response, app, "user_disabled");
+                redirectError(request, response, app, "user_disabled");
                 return;
             }
 
             if ("plaza-admin".equals(app)) {
                 if (!"admin".equals(user.getRole())) {
-                    redirectError(response, app, "forbidden");
+                    redirectError(request, response, app, "forbidden");
                     return;
                 }
                 String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
-                response.sendRedirect(ssoProperties.getCallbacks().get("plaza-admin")
+                // 前端回跳按请求来源动态生成：IP 进回 IP，域名进回域名
+                response.sendRedirect(originResolver.resolveFrontEndBase(request)
                         + "/#/admin/sso-callback?token="
                         + URLEncoder.encode(token, StandardCharsets.UTF_8.name()));
                 return;
@@ -90,9 +93,9 @@ public class SsoController {
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : "unknown";
             if (errorMsg.contains("禁用")) {
-                redirectError(response, app, "user_disabled");
+                redirectError(request, response, app, "user_disabled");
             } else {
-                redirectError(response, app, "auth_failed");
+                redirectError(request, response, app, "auth_failed");
             }
         }
     }
@@ -137,9 +140,9 @@ public class SsoController {
         return Result.success(vo);
     }
 
-    private void redirectError(HttpServletResponse response, String app, String error) throws IOException {
+    private void redirectError(HttpServletRequest request, HttpServletResponse response, String app, String error) throws IOException {
         if ("plaza-admin".equals(app)) {
-            response.sendRedirect(ssoProperties.getCallbacks().get("plaza-admin") + "/#/admin/sso-callback?error=" + error);
+            response.sendRedirect(originResolver.resolveFrontEndBase(request) + "/#/admin/sso-callback?error=" + error);
         } else {
             response.sendRedirect(XIXI_FRONT_END + "/#/sso-callback?error=" + error);
         }

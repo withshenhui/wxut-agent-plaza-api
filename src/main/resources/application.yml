@@ -38,6 +38,10 @@ cas:
   server-logout-url: https://ids.wxut.edu.cn/authserver/logout
   client-server-url: http://210.28.145.186:3001
   front-end-url: http://210.28.145.186:3001
+  # 客户端入口 origin 白名单：请求 Host 命中哪个就用哪个回调，实现"IP 进回 IP、域名进回域名"
+  allowed-client-origins:
+    - http://210.28.145.186:3001
+    - http://localhost:3001
 
 file:
   upload-dir: ./uploads

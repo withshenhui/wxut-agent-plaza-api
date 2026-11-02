@@ -18,6 +18,10 @@ mybatis-plus:
 cas:
   client-server-url: https://aicenter.wxut.edu.cn/agent-plaza
   front-end-url: https://aicenter.wxut.edu.cn
+  # 客户端入口 origin 白名单：请求 Host 命中哪个就用哪个回调（IP 进回 IP、域名进回域名）
+  allowed-client-origins:
+    - https://aicenter.wxut.edu.cn
+    - http://210.28.145.186:3001
 
 sso:
   callbacks:
