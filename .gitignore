@@ -8,3 +8,5 @@ target/
 .project
 .classpath
 uploads/
+.DS_Store
+https证书/

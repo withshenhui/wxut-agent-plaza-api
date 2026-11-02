@@ -16,8 +16,12 @@ mybatis-plus:
     log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
 
 cas:
-  client-server-url: http://210.28.145.186:3001/agent-plaza
-  front-end-url: http://210.28.145.186:3001/agent-plaza
+  client-server-url: https://aicenter.wxut.edu.cn/agent-plaza
+  front-end-url: https://aicenter.wxut.edu.cn
+
+sso:
+  callbacks:
+    plaza-admin: https://aicenter.wxut.edu.cn
 
 logging:
   level:
