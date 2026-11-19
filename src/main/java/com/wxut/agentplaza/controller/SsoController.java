@@ -94,8 +94,17 @@ public class SsoController {
                     return;
                 }
                 String ticket = ticketStore.create(user.getUsername(), user.getNickname());
-                response.sendRedirect(difyCallback + "?ticket="
-                        + URLEncoder.encode(ticket, StandardCharsets.UTF_8.name()));
+                StringBuilder url = new StringBuilder(difyCallback)
+                        .append("?ticket=")
+                        .append(URLEncoder.encode(ticket, StandardCharsets.UTF_8.name()));
+                // 落地页透传：仅接受站内相对路径（防开放重定向），如 /datasets 直达 Dify 知识库
+                String redirect = request.getParameter("redirect");
+                if (redirect != null && !redirect.isEmpty()
+                        && redirect.startsWith("/") && !redirect.startsWith("//")) {
+                    url.append("&redirect=")
+                       .append(URLEncoder.encode(redirect, StandardCharsets.UTF_8.name()));
+                }
+                response.sendRedirect(url.toString());
                 log.info("SSO entry: uid={} -> ticket issued for dify", uid);
                 return;
             }
