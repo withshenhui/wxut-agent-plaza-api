@@ -7,8 +7,15 @@ import com.wxut.agentplaza.service.SysConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Tag(name = "系统配置")
 @RestController
@@ -18,6 +25,19 @@ public class SysConfigController {
 
     private final SysConfigService configService;
 
+    /**
+     * 允许未登录读取的配置 key 白名单。
+     * 背景：SecurityConfig 对 GET /api/v1/configs/* 放行（前台需要读站点名等），
+     * 曾导致 llm.api_key / llm.providers 等含密钥配置可被匿名读取，故在控制器层收紧。
+     */
+    private static final Set<String> PUBLIC_READ_KEYS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList("site_name", "site_subtitle", "site_footer", "menu.links")));
+
+    private static boolean isAuthenticated() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken);
+    }
+
     @GetMapping
     @Operation(summary = "获取所有配置")
     public Result<List<SysConfig>> list() {
@@ -25,8 +45,11 @@ public class SysConfigController {
     }
 
     @GetMapping("/{key}")
-    @Operation(summary = "获取配置项")
+    @Operation(summary = "获取配置项（未登录仅限白名单 key）")
     public Result<SysConfig> getByKey(@PathVariable String key) {
+        if (!isAuthenticated() && !PUBLIC_READ_KEYS.contains(key)) {
+            return Result.error(403, "无权读取该配置");
+        }
         return Result.success(configService.getByKey(key));
     }
 
