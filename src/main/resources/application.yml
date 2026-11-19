@@ -63,3 +63,4 @@ sso:
   callbacks:
     xixi: http://210.28.144.49:8002/xiaozhi/user/sso-login
     plaza-admin: http://210.28.145.186:3001/agent-plaza
+    dify: https://aiagent.wxut.edu.cn/console/api/passport/sso-login

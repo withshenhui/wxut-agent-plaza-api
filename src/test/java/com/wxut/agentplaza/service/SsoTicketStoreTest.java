@@ -10,7 +10,9 @@ class SsoTicketStoreTest {
         SsoTicketStore store = new SsoTicketStore();
         String ticket = store.create("2009090714");
         assertNotNull(ticket);
-        assertEquals("2009090714", store.consume(ticket));
+        SsoTicketStore.Entry entry = store.consume(ticket);
+        assertNotNull(entry);
+        assertEquals("2009090714", entry.username);
         assertNull(store.consume(ticket), "ticket 必须一次性消费");
     }
 
@@ -30,5 +32,22 @@ class SsoTicketStoreTest {
     void create_differentTicketsEachTime() {
         SsoTicketStore store = new SsoTicketStore();
         assertNotEquals(store.create("u"), store.create("u"));
+    }
+
+    @Test
+    void create_withName_carriesDisplayName() {
+        SsoTicketStore store = new SsoTicketStore();
+        SsoTicketStore.Entry entry = store.consume(store.create("20193058", "陈立群"));
+        assertNotNull(entry);
+        assertEquals("20193058", entry.username);
+        assertEquals("陈立群", entry.name);
+    }
+
+    @Test
+    void create_withoutName_nameIsNull() {
+        SsoTicketStore store = new SsoTicketStore();
+        SsoTicketStore.Entry entry = store.consume(store.create("20193058"));
+        assertNotNull(entry);
+        assertNull(entry.name);
     }
 }

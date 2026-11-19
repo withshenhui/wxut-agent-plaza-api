@@ -21,11 +21,13 @@ public class SsoTicketStore {
     private final SecureRandom random = new SecureRandom();
     private final Map<String, Entry> tickets = new ConcurrentHashMap<>();
 
-    private static class Entry {
-        final String username;
+    public static class Entry {
+        public final String username;
+        public final String name;
         final long expiresAt;
-        Entry(String username, long expiresAt) {
+        Entry(String username, String name, long expiresAt) {
             this.username = username;
+            this.name = name;
             this.expiresAt = expiresAt;
         }
     }
@@ -39,16 +41,21 @@ public class SsoTicketStore {
     }
 
     public String create(String username) {
+        return create(username, null);
+    }
+
+    /** 带显示名创建（如 Dify 开户需要 CAS cn 姓名；xixi 等旧调用方不传） */
+    public String create(String username, String name) {
         byte[] buf = new byte[24];
         random.nextBytes(buf);
         String ticket = Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
-        tickets.put(ticket, new Entry(username, System.currentTimeMillis() + ttlMs));
+        tickets.put(ticket, new Entry(username, name, System.currentTimeMillis() + ttlMs));
         cleanup();
         return ticket;
     }
 
-    /** 一次性消费：有效返回用户名，否则返回 null */
-    public String consume(String ticket) {
+    /** 一次性消费：有效返回票据条目（用户名 + 显示名），否则返回 null */
+    public Entry consume(String ticket) {
         if (ticket == null || ticket.isEmpty()) {
             return null;
         }
@@ -56,7 +63,7 @@ public class SsoTicketStore {
         if (e == null || System.currentTimeMillis() >= e.expiresAt) {
             return null;
         }
-        return e.username;
+        return e;
     }
 
     private void cleanup() {

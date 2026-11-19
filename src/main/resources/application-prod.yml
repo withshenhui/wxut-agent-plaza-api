@@ -26,6 +26,8 @@ cas:
 sso:
   callbacks:
     plaza-admin: https://aicenter.wxut.edu.cn
+    # 91 Dify（定制版 1.13.3）SSO 验票端点，域名走学校前置代理
+    dify: https://aiagent.wxut.edu.cn/console/api/passport/sso-login
 
 logging:
   level:

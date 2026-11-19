@@ -47,6 +47,7 @@ public class SsoController {
      * SSO 入口（被 CAS 三件套过滤器保护）。
      * app=xixi        → 签发一次性 ticket，302 到锡锡后端 /xiaozhi/user/sso-login
      * app=plaza-admin → 要求 role=admin，直接签 JWT，302 到 #/admin/sso-callback
+     * app=dify        → 签发一次性 ticket（含显示名），302 到 Dify /console/api/passport/sso-login
      */
     @GetMapping("/entry")
     public void entry(@RequestParam String app, HttpServletRequest request,
@@ -85,6 +86,20 @@ public class SsoController {
                 return;
             }
 
+            if ("dify".equals(app)) {
+                String difyCallback = ssoProperties.getCallbacks().get("dify");
+                if (difyCallback == null || difyCallback.isEmpty()) {
+                    log.error("SSO entry: dify callback not configured (sso.callbacks.dify)");
+                    response.sendError(500, "dify callback not configured");
+                    return;
+                }
+                String ticket = ticketStore.create(user.getUsername(), user.getNickname());
+                response.sendRedirect(difyCallback + "?ticket="
+                        + URLEncoder.encode(ticket, StandardCharsets.UTF_8.name()));
+                log.info("SSO entry: uid={} -> ticket issued for dify", uid);
+                return;
+            }
+
             // 默认按 xixi 处理
             String ticket = ticketStore.create(user.getUsername());
             response.sendRedirect(ssoProperties.getCallbacks().get("xixi")
@@ -100,7 +115,7 @@ public class SsoController {
         }
     }
 
-    /** 锡锡服务端拿 ticket 换用户名（共享密钥保护，常量时间比较） */
+    /** 锡锡/Dify 服务端拿 ticket 换用户名（共享密钥保护，常量时间比较） */
     @PostMapping(value = "/validate", consumes = MediaType.APPLICATION_JSON_VALUE)
     public Result<UsernameVO> validate(@RequestHeader(value = "X-Sso-Secret", required = false) String secret,
                                        @RequestBody Map<String, String> body) {
@@ -109,12 +124,13 @@ public class SsoController {
                 ssoProperties.getSecret().getBytes(StandardCharsets.UTF_8))) {
             return Result.error(401, "密钥校验失败");
         }
-        String username = ticketStore.consume(body.get("ticket"));
-        if (username == null) {
+        SsoTicketStore.Entry entry = ticketStore.consume(body.get("ticket"));
+        if (entry == null) {
             return Result.error(401, "ticket 无效或已过期");
         }
         UsernameVO vo = new UsernameVO();
-        vo.setUsername(username);
+        vo.setUsername(entry.username);
+        vo.setName(entry.name != null && !entry.name.isEmpty() ? entry.name : entry.username);
         return Result.success(vo);
     }
 
@@ -143,6 +159,10 @@ public class SsoController {
     private void redirectError(HttpServletRequest request, HttpServletResponse response, String app, String error) throws IOException {
         if ("plaza-admin".equals(app)) {
             response.sendRedirect(originResolver.resolveFrontEndBase(request) + "/#/admin/sso-callback?error=" + error);
+        } else if ("dify".equals(app)) {
+            // 错误也发到 Dify 回调但不带 ticket，由 passport 端点兜底 302 到 Dify 自己的登录页
+            String difyCallback = ssoProperties.getCallbacks().get("dify");
+            response.sendRedirect(difyCallback != null ? difyCallback : "/signin");
         } else {
             response.sendRedirect(XIXI_FRONT_END + "/#/sso-callback?error=" + error);
         }
