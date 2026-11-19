@@ -42,6 +42,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (StringUtils.hasText(bearer) && bearer.startsWith("Bearer ")) {
             return bearer.substring(7);
         }
+        // EventSource（SSE）无法携带 Authorization 头，允许 ?token= 查询参数
+        String queryToken = request.getParameter("token");
+        if (StringUtils.hasText(queryToken)) {
+            return queryToken;
+        }
         return null;
     }
 }
