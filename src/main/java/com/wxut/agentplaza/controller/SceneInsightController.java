@@ -331,7 +331,7 @@ public class SceneInsightController {
         int offset = (page - 1) * size;
         List<Map<String, Object>> rows = jt.queryForList(
                 sig + " SELECT xgh AS id, name, college, grade, level, drop_pct AS m1, no_return AS m2, (drop_pct + no_return * 10) AS score FROM sig" +
-                outer + " ORDER BY score DESC LIMIT " + size + " OFFSET " + offset, h1s, h1e, h2s, e, ds, de);
+                outer + " ORDER BY CASE level WHEN 'hi' THEN 0 WHEN 'mid' THEN 1 ELSE 2 END, score DESC LIMIT " + size + " OFFSET " + offset, h1s, h1e, h2s, e, ds, de);
         Map<String, Object> r = new HashMap<>();
         r.put("total", total); r.put("records", rows);
         return r;
@@ -347,7 +347,8 @@ public class SceneInsightController {
         Long total = jt.queryForObject("SELECT COUNT(*) FROM (" + sig + " SELECT * FROM sig" + outer + ") t", Long.class, params);
         int offset = (page - 1) * size;
         List<Map<String, Object>> rows = jt.queryForList(
-                sig + " SELECT " + selectCols + " FROM sig" + outer + " ORDER BY score DESC LIMIT " + size + " OFFSET " + offset, params);
+                sig + " SELECT " + selectCols + " FROM sig" + outer +
+                " ORDER BY CASE level WHEN 'hi' THEN 0 WHEN 'mid' THEN 1 ELSE 2 END, score DESC LIMIT " + size + " OFFSET " + offset, params);
         Map<String, Object> r = new HashMap<>();
         r.put("total", total); r.put("records", rows);
         return r;
