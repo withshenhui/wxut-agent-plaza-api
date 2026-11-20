@@ -130,6 +130,53 @@ public class FundingInsightController {
         return Result.success(rows);
     }
 
+    @GetMapping("/histogram")
+    @Operation(summary = "单顿均价分位分布（达标人群 20 桶）")
+    public Result<List<Map<String, Object>>> histogram(@RequestParam(defaultValue = "30") int windowDays) {
+        JdbcTemplate jt = jt();
+        LocalDate end = latestConsumptionDate(jt);
+        LocalDate start = end.minusDays(windowDays);
+        String s = start.format(D), e = end.plusDays(1).format(D);
+        List<Map<String, Object>> rows = jt.queryForList(
+                PER_PCT + " SELECT" +
+                "  COUNT(*) FILTER (WHERE pr < 0.05) AS p0_5," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.05 AND pr < 0.10) AS p5_10," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.10 AND pr < 0.15) AS p10_15," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.15 AND pr < 0.20) AS p15_20," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.20 AND pr < 0.25) AS p20_25," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.25 AND pr < 0.30) AS p25_30," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.30 AND pr < 0.35) AS p30_35," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.35 AND pr < 0.40) AS p35_40," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.40 AND pr < 0.45) AS p40_45," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.45 AND pr < 0.50) AS p45_50," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.50 AND pr < 0.55) AS p50_55," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.55 AND pr < 0.60) AS p55_60," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.60 AND pr < 0.65) AS p60_65," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.65 AND pr < 0.70) AS p65_70," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.70 AND pr < 0.75) AS p70_75," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.75 AND pr < 0.80) AS p75_80," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.80 AND pr < 0.85) AS p80_85," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.85 AND pr < 0.90) AS p85_90," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.90 AND pr < 0.95) AS p90_95," +
+                "  COUNT(*) FILTER (WHERE pr >= 0.95) AS p95_100" +
+                " FROM pct", s, e);
+        // 转成 20 桶数组 [{bucket: 'P0-5', n: x, light: 'hi'|'mid'|'watch'|null}]
+        String[] keys = {"p0_5","p5_10","p10_15","p15_20","p20_25","p25_30","p30_35","p35_40","p40_45","p45_50",
+                "p50_55","p55_60","p60_65","p65_70","p70_75","p75_80","p80_85","p85_90","p90_95","p95_100"};
+        List<Map<String, Object>> out = new java.util.ArrayList<>();
+        if (!rows.isEmpty()) {
+            Map<String, Object> r = rows.get(0);
+            for (int i = 0; i < keys.length; i++) {
+                Map<String, Object> b = new HashMap<>();
+                b.put("bucket", "P" + (i * 5) + "-" + (i * 5 + 5));
+                b.put("n", ((Number) r.get(keys[i])).intValue());
+                b.put("light", i < 1 ? "hi" : i < 3 ? "mid" : i < 8 ? "watch" : null);
+                out.add(b);
+            }
+        }
+        return Result.success(out);
+    }
+
     @GetMapping("/students")
     @Operation(summary = "线索名单（分页）")
     public Result<Map<String, Object>> students(
