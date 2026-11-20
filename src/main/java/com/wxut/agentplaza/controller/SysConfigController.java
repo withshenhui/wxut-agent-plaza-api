@@ -31,7 +31,7 @@ public class SysConfigController {
      * 曾导致 llm.api_key / llm.providers 等含密钥配置可被匿名读取，故在控制器层收紧。
      */
     private static final Set<String> PUBLIC_READ_KEYS = Collections.unmodifiableSet(
-            new HashSet<>(Arrays.asList("site_name", "site_subtitle", "site_footer", "menu.links")));
+            new HashSet<>(Arrays.asList("site_name", "site_subtitle", "site_footer", "menu.links", "guest.mode")));
 
     private static boolean isAuthenticated() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
