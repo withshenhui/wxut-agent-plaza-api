@@ -268,6 +268,55 @@ public class SceneInsightController {
         return Result.success(mentalStudentsImpl(jt, half1s, half1e, half2s, e, ds, de, level, college, q, page, size));
     }
 
+    /* ---------- 详情：未归明细 + 请假交叉（safety/mental 共用） ---------- */
+
+    @GetMapping("/detail")
+    @Operation(summary = "学生未归明细 + 请假交叉核验")
+    public Result<Map<String, Object>> detail(@RequestParam String studentId, @RequestParam(defaultValue = "30") int windowDays) {
+        JdbcTemplate jt = jt();
+        LocalDate dEnd = latestDormDate(jt);
+        LocalDate dStart = dEnd.minusDays(windowDays);
+        String ds = dStart.format(D), de = dEnd.plusDays(1).format(D);
+
+        // 未归/晚归明细
+        List<Map<String, Object>> nights = jt.queryForList(
+                "SELECT date, time, state FROM usr_gxai.t_zhsg_xskq" +
+                " WHERE xh = ? AND date >= ? AND date < ? AND (state = '6' OR (state <> '6' AND time >= '2230'))" +
+                " ORDER BY date DESC", studentId, ds, de);
+
+        // 观察窗内相关请假（有效行 c；kssj/jssj 是 timestamp with tz，取 ::date 比较）
+        List<Map<String, Object>> leaves = jt.queryForList(
+                "SELECT kssj::date AS start_date, jssj::date AS end_date, qjlx, left(wcsy, 30) AS reason" +
+                " FROM usr_gxai.t_yzsfw_xsqjb WHERE xh = ? AND dke_op_type = 'c'" +
+                " AND jssj >= ? AND kssj <= ?" +
+                " ORDER BY kssj DESC LIMIT 20", studentId, ds + " 00:00", de + " 23:59");
+
+        // 交叉：每个未归日是否在请假区间内
+        java.util.Set<String> leaveDays = new java.util.HashSet<>();
+        for (Map<String, Object> lv : leaves) {
+            LocalDate st = LocalDate.parse(String.valueOf(lv.get("start_date")).substring(0, 10));
+            LocalDate en = LocalDate.parse(String.valueOf(lv.get("end_date")).substring(0, 10));
+            for (LocalDate d = st; !d.isAfter(en); d = d.plusDays(1)) leaveDays.add(d.toString());
+        }
+        int matched = 0, unmatched = 0;
+        List<Map<String, Object>> rowsOut = new java.util.ArrayList<>();
+        for (Map<String, Object> n : nights) {
+            String d = String.valueOf(n.get("date"));
+            boolean onLeave = leaveDays.contains(d.length() > 10 ? d.substring(0, 10) : d);
+            if (onLeave) matched++; else unmatched++;
+            Map<String, Object> row = new HashMap<>(n);
+            row.put("onLeave", onLeave);
+            rowsOut.add(row);
+        }
+
+        Map<String, Object> r = new HashMap<>();
+        r.put("nights", rowsOut);
+        r.put("leaves", leaves);
+        r.put("matched", matched);
+        r.put("unmatched", unmatched);
+        return Result.success(r);
+    }
+
     /* ---------- 共用 students 实现 ---------- */
 
     private Map<String, Object> studentsCommon(JdbcTemplate jt, String scene, String p1, String p2,
