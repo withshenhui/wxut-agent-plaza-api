@@ -53,6 +53,17 @@ public class SysConfigController {
         return Result.success(configService.getByKey(key));
     }
 
+    /**
+     * 当前生效的大模型名（公开、脱敏：仅模型名，不含地址与密钥），
+     * 供前台"智能体信息"展示后台大模型配置当前启用的模型。
+     */
+    @GetMapping("/llm/current-model")
+    @Operation(summary = "当前生效大模型名（公开，脱敏）")
+    public Result<String> currentModel() {
+        SysConfig c = configService.getByKey("llm.model");
+        return Result.success(c != null ? c.getConfigValue() : "");
+    }
+
     @PutMapping("/{key}")
     @Operation(summary = "更新配置项")
     @OperationLog("更新系统配置")

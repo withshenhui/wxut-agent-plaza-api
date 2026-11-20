@@ -42,6 +42,7 @@ public class SecurityConfig {
                 .antMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/models/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/configs/*").permitAll()
+                .antMatchers(HttpMethod.GET, "/api/v1/configs/llm/current-model").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/files/download/**").permitAll()
                 .antMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                 .antMatchers("/", "/index.html", "/assets/**", "/images/**", "/*.js", "/*.css", "/*.png", "/*.svg", "/*.ico", "/*.html").permitAll()
