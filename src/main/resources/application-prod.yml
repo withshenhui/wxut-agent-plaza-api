@@ -32,3 +32,10 @@ sso:
 logging:
   level:
     com.wxut.agentplaza: INFO
+
+# 只读数仓（精准资助分析等洞察查询；连接级只读+60s超时）
+warehouse:
+  url: jdbc:postgresql://210.28.145.81:5431/datav
+  username: usr_gxai
+  password: WXit@2026
+  maximum-pool-size: 4
