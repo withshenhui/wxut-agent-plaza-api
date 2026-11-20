@@ -90,10 +90,10 @@ public class SceneInsightController {
         r.put("active", jt.queryForObject("SELECT COUNT(DISTINCT s.xh) FROM usr_gxai.t_zhsg_xskq s WHERE s.date >= ? AND s.date < ?", Long.class, s, e));
         Map<String, Object> t = jt.queryForList(base +
                 " SELECT COUNT(*) AS n_total," +
-                " COUNT(*) FILTER (WHERE no_return >= 5 OR (no_return >= 3 AND late >= 3)) AS n_hi," +
-                " COUNT(*) FILTER (WHERE no_return >= 3 AND (no_return < 5 AND (late < 3 OR late IS NULL))) AS n_mid," +
-                " COUNT(*) FILTER (WHERE late >= 5) AS n_watch" +
-                " FROM agg WHERE no_return >= 1 OR late >= 1", s, e).get(0);
+                " COUNT(*) FILTER (WHERE no_return >= 8) AS n_hi," +
+                " COUNT(*) FILTER (WHERE no_return >= 3 AND no_return <= 7) AS n_mid," +
+                " COUNT(*) FILTER (WHERE no_return >= 1 AND no_return <= 2) AS n_watch" +
+                " FROM agg WHERE no_return >= 1", s, e).get(0);
         r.put("hi", t.get("n_hi")); r.put("mid", t.get("n_mid")); r.put("watch", t.get("n_watch"));
         r.put("onLeave", jt.queryForObject(
                 "SELECT COUNT(*) FROM usr_gxai.t_yzsfw_xsqjb WHERE kssj <= TO_CHAR(CURRENT_DATE,'YYYY-MM-DD') AND jssj >= TO_CHAR(CURRENT_DATE,'YYYY-MM-DD')", Long.class));
@@ -146,7 +146,7 @@ public class SceneInsightController {
         JdbcTemplate jt = jt();
         String term = latestTerm(jt);
         Map<String, Object> r = new HashMap<>();
-        r.put("range", "学期 " + term);
+        r.put("range", "学期 " + term + "（数仓成绩数据截至该学期，之后未再同步）");
         r.put("dataDate", term);
         r.put("active", jt.queryForObject("SELECT COUNT(DISTINCT xh) FROM usr_gxai.t_bzks_kscj WHERE xnxqid = ? AND isdel = '0'", Long.class, term));
         Map<String, Object> t = jt.queryForList(
@@ -333,9 +333,9 @@ public class SceneInsightController {
                 "  COUNT(*) FILTER (WHERE state <> '6' AND time >= '2230') AS late" +
                 " FROM usr_gxai.t_zhsg_xskq WHERE date >= ? AND date < ? GROUP BY xh)," +
                 " sig AS (SELECT agg.*, d.xsxm AS name, d.yxmc AS college, d.njmc AS grade," +
-                "  CASE WHEN no_return >= 5 OR (no_return >= 3 AND late >= 3) THEN 'hi'" +
+                "  CASE WHEN no_return >= 8 THEN 'hi'" +
                 "       WHEN no_return >= 3 THEN 'mid' ELSE 'watch' END AS level" +
-                " FROM agg JOIN d ON d.xh = agg.xgh WHERE no_return >= 1 OR late >= 5)";
+                " FROM agg JOIN d ON d.xh = agg.xgh WHERE no_return >= 1)";
         return queryStudents(jt, sig, s, e, level, college, q, page, size,
                 "xgh AS id, name, college, grade, level, no_return AS m1, late AS m2, (no_return + late) AS score");
     }
