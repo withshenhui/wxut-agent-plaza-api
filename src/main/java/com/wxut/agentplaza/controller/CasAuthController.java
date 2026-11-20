@@ -36,8 +36,39 @@ public class CasAuthController {
     @GetMapping("/cas-login-url")
     public Result<String> getCasLoginUrl(HttpServletRequest request) throws java.io.UnsupportedEncodingException {
         String serviceUrl = originResolver.resolveServerBase(request) + "/api/v1/auth/cas-login";
+        // 前端入口路径（如 /v2/）通过 redirect 参数透传，登录后原路返回
+        String redirect = sanitizeRedirect(request.getParameter("redirect"));
+        if (redirect != null) {
+            serviceUrl = serviceUrl + "?redirect=" + URLEncoder.encode(redirect, "UTF-8");
+        }
         String casLoginUrl = casConfig.getServerLoginUrl() + "?service=" + URLEncoder.encode(serviceUrl, "UTF-8");
         return Result.success(casLoginUrl);
+    }
+
+    /**
+     * 仅放行以 / 开头的站内路径（防开放重定向），解码后原样返回（编码由调用方负责）。
+     */
+    private String sanitizeRedirect(String redirect) {
+        if (redirect == null || redirect.isEmpty() || !redirect.startsWith("/") || redirect.startsWith("//")) {
+            return null;
+        }
+        try {
+            return java.net.URLDecoder.decode(redirect, "UTF-8");
+        } catch (java.io.UnsupportedEncodingException e) {
+            return null;
+        }
+    }
+
+    /** 从请求中取出经白名单校验的前端回跳前缀（redirect 参数指定，如 /v2） */
+    private String frontEndPrefix(HttpServletRequest request) {
+        String redirect = request.getParameter("redirect");
+        if (redirect != null && redirect.startsWith("/") && !redirect.startsWith("//")) {
+            String cleaned = redirect.replaceAll("/+$", "");
+            if (cleaned.matches("/[A-Za-z0-9_-]+")) {
+                return cleaned;
+            }
+        }
+        return "";
     }
 
     @GetMapping("/cas-logout-url")
@@ -49,7 +80,7 @@ public class CasAuthController {
     public void casLogin(HttpServletRequest request, HttpServletResponse response) throws IOException {
         response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
         response.setHeader("Pragma", "no-cache");
-        String frontEnd = originResolver.resolveFrontEndBase(request);
+        String frontEnd = originResolver.resolveFrontEndBase(request) + frontEndPrefix(request);
         String uid = request.getRemoteUser();
         if (uid == null || uid.isEmpty()) {
             response.sendRedirect(frontEnd + "/#/cas-callback?error=auth_failed");
