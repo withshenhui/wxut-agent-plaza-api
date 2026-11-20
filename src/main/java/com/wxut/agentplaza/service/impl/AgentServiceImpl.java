@@ -35,7 +35,8 @@ public class AgentServiceImpl implements AgentService {
     @Override
     public PageResult<AgentVO> search(AgentQueryDTO dto) {
         Page<Agent> page = new Page<>(dto.getPage(), dto.getSize());
-        IPage<Agent> result = agentMapper.searchAgents(page, dto.getCategoryId(), dto.getKeyword());
+        IPage<Agent> result = agentMapper.searchAgents(page, dto.getCategoryId(), dto.getKeyword(),
+                dto.getIncludeBuilding() != null && dto.getIncludeBuilding() == 1 ? null : 0);
         Map<Long, String> categoryMap = getCategoryMap();
         Map<Long, List<String>> tagMap = getTagMap(result.getRecords());
         List<AgentVO> vos = result.getRecords().stream().map(a -> toAgentVO(a, categoryMap, tagMap)).collect(Collectors.toList());
@@ -78,7 +79,9 @@ public class AgentServiceImpl implements AgentService {
     @Override
     public List<AgentVO> listRecommended() {
         List<Agent> agents = agentMapper.selectList(
-                new LambdaQueryWrapper<Agent>().eq(Agent::getIsRecommended, 1).eq(Agent::getStatus, 1).orderByAsc(Agent::getSortOrder));
+                new LambdaQueryWrapper<Agent>().eq(Agent::getIsRecommended, 1).eq(Agent::getStatus, 1)
+                        .and(w -> w.isNull(Agent::getIsBuilding).or().eq(Agent::getIsBuilding, 0))
+                        .orderByAsc(Agent::getSortOrder));
         Map<Long, String> categoryMap = getCategoryMap();
         Map<Long, List<String>> tagMap = getTagMap(agents);
         return agents.stream().map(a -> toAgentVO(a, categoryMap, tagMap)).collect(Collectors.toList());
@@ -95,6 +98,7 @@ public class AgentServiceImpl implements AgentService {
         agent.setCategoryId(dto.getCategoryId());
         agent.setExternalUrl(dto.getExternalUrl());
         agent.setIsRecommended(dto.getIsRecommended() != null ? dto.getIsRecommended() : 0);
+        agent.setIsBuilding(dto.getIsBuilding() != null ? dto.getIsBuilding() : 0);
         agent.setSortOrder(dto.getSortOrder() != null ? dto.getSortOrder() : 0);
         agent.setStatus(dto.getStatus() != null ? dto.getStatus() : 1);
         agentMapper.insert(agent);
@@ -113,6 +117,7 @@ public class AgentServiceImpl implements AgentService {
         agent.setCategoryId(dto.getCategoryId());
         agent.setExternalUrl(dto.getExternalUrl());
         agent.setIsRecommended(dto.getIsRecommended());
+        agent.setIsBuilding(dto.getIsBuilding() != null ? dto.getIsBuilding() : 0);
         agent.setSortOrder(dto.getSortOrder());
         agent.setStatus(dto.getStatus());
         agentMapper.updateById(agent);
@@ -160,6 +165,7 @@ public class AgentServiceImpl implements AgentService {
         vo.setDescription(a.getDescription());
         vo.setTags(tagMap.getOrDefault(a.getId(), Collections.emptyList()));
         vo.setIsRecommended(a.getIsRecommended());
+        vo.setIsBuilding(a.getIsBuilding() != null && a.getIsBuilding() == 1 ? 1 : 0);
         vo.setVisitCount(a.getVisitCount());
         if (a.getCategoryId() != null) {
             vo.setCategoryKey(categoryMap.keySet().stream()

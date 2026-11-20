@@ -9,5 +9,6 @@ import org.apache.ibatis.annotations.Param;
 @Mapper
 public interface AgentMapper extends BaseMapper<Agent> {
 
-    IPage<Agent> searchAgents(IPage<Agent> page, @Param("categoryId") Long categoryId, @Param("keyword") String keyword);
+    IPage<Agent> searchAgents(IPage<Agent> page, @Param("categoryId") Long categoryId, @Param("keyword") String keyword,
+                              @Param("building") Integer building);
 }

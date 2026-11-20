@@ -13,5 +13,6 @@ public class AgentVO {
     private String categoryKey;
     private String categoryName;
     private Integer isRecommended;
+    private Integer isBuilding;
     private Long visitCount;
 }

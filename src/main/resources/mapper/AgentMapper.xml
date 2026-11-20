@@ -5,6 +5,9 @@
         SELECT DISTINCT a.* FROM agent a
         LEFT JOIN agent_tag at ON a.id = at.agent_id
         WHERE a.status = 1
+        <if test="building != null">
+            AND (a.is_building IS NULL OR a.is_building = #{building})
+        </if>
         <if test="categoryId != null">
             AND a.category_id = #{categoryId}
         </if>

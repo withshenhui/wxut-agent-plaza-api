@@ -34,6 +34,9 @@ public class Agent {
 
     private Integer isRecommended;
 
+    /** 建设中：1=建设中（广场列表不展示，后台可见） */
+    private Integer isBuilding;
+
     private Integer status;
 
     private Integer sortOrder;

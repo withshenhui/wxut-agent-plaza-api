@@ -14,6 +14,7 @@ public class AgentCreateDTO {
     private Long categoryId;
     private String externalUrl;
     private Integer isRecommended;
+    private Integer isBuilding;
     private Integer sortOrder;
     private Integer status;
     private List<String> tags;
