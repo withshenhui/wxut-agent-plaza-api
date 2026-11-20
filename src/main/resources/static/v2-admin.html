@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>锡职大 AI中台 · 管理后台 V2</title>
+<style>
+  :root{
+    --el-primary:#4A6CF7; --el-primary-l3:#6B8AFF; --el-primary-l8:#D0DCFF; --el-primary-l9:#ECF0FF; --el-primary-d2:#3B5AE6;
+    --p-primary:#3B82F6; --p-secondary:#60A5FA; --p-accent:#F97316;
+    --p-success:#10B981; --p-warning:#F59E0B; --p-danger:#EF4444;
+    --p-surface:#FFFFFF; --p-line:#EDF1F6; --p-line2:#E3E9F2;
+    --p-text:#0F172A; --p-t2:#475569; --p-t3:#64748B; --p-t4:#94A3B8;
+    --p-fill:#F1F5F9; --p-hover:#F8FAFC; --p-r:14px;
+    --abg:#F5F6FA; --acard:#FFFFFF; --aline:#E6E9F2; --aink:#182234;
+    --abad:#E5484D; --abad-bg:#FEECEB;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:"Inter","Helvetica Neue",Helvetica,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    background:var(--abg); color:var(--p-text); font-size:14px; line-height:1.6; -webkit-font-smoothing:antialiased;
+  }
+  #app{display:flex;min-height:100vh;min-width:1180px}
+
+  /* ============ 侧栏 ============ */
+  .el-sidebar{width:220px;background:var(--acard);border-right:1px solid #e9eef5;box-shadow:2px 0 14px #1a315206;
+    height:100vh;position:sticky;top:0;overflow-y:auto;flex-shrink:0;z-index:10;display:flex;flex-direction:column}
+  .side-brand{display:flex;align-items:center;gap:10px;padding:18px 16px 14px;border-bottom:1px solid var(--p-line)}
+  .side-brand .mark-img{width:32px;height:32px;object-fit:contain;display:block;flex-shrink:0}
+  .side-brand .t1{font-size:15px;font-weight:700;color:var(--aink);line-height:1.2}
+  .side-brand .t2{font-size:10.5px;color:var(--p-t4);letter-spacing:.6px}
+  .side-menu{flex:1;padding:10px 10px 16px}
+  .menu-group{font-size:11px;color:var(--p-t4);padding:14px 16px 6px;letter-spacing:1.5px}
+  .el-menu-item{display:flex;align-items:center;gap:12px;padding:0 14px;height:44px;font-size:14px;color:var(--p-t2);
+    border-radius:10px;cursor:pointer;white-space:nowrap;margin-bottom:2px;transition:all .15s ease;user-select:none}
+  .el-menu-item:hover{background:var(--p-fill);color:var(--p-text)}
+  .el-menu-item.active{background:var(--el-primary-l9);color:var(--el-primary);font-weight:600}
+  .el-menu-item .ic{width:18px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+  .el-menu-item .ic svg{width:17px;height:17px;display:block}
+  .el-menu-item .new-chip{margin-left:auto;font-size:10px;font-weight:700;color:#fff;background:var(--p-accent);
+    border-radius:5px;padding:1px 6px;letter-spacing:.5px}
+  .el-menu-item.sub{padding-left:40px;height:38px;font-size:13px}
+
+  /* ============ 主区 ============ */
+  .main{flex:1;display:flex;flex-direction:column;min-width:0}
+  .el-header{background:var(--p-surface);border-bottom:1px solid var(--p-line);padding:0 28px;height:64px;
+    display:flex;align-items:center;justify-content:space-between;box-shadow:0 1px 3px #0000000a;position:sticky;top:0;z-index:20}
+  .hd-left{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:600;color:var(--aink)}
+  .hd-left .crumb{color:var(--p-t3);font-weight:400}
+  .hd-right{display:flex;align-items:center;gap:16px}
+  .proto-badge{font-size:11px;font-weight:600;color:#7C5C12;background:#FDF3D7;border:1px solid #F3E3B2;
+    border-radius:999px;padding:3px 11px;letter-spacing:.5px}
+  .hd-user{display:flex;align-items:center;gap:9px;cursor:pointer;padding:5px 8px;border-radius:10px}
+  .hd-user:hover{background:var(--p-fill)}
+  .hd-user .ava{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#3B82F6,#60A5FA);
+    color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:center}
+  .hd-user .nm{font-size:13.5px;color:var(--p-text)}
+  .hd-user .arr{color:var(--p-t4);font-size:10px}
+
+  .dash{max-width:1560px;margin:0 auto;padding:22px 28px 34px;width:100%}
+  .page-view{display:none}
+  .page-view.on{display:block;animation:pg-in .22s ease both}
+  @keyframes pg-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  /* 页头 */
+  .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .ph-title{font-size:21px;font-weight:700;color:var(--aink);letter-spacing:-.2px;display:flex;align-items:center;gap:10px}
+  .ph-sub{font-size:12.5px;color:var(--p-t3);margin-top:3px}
+  .ph-right{display:flex;align-items:center;gap:12px}
+  .fresh{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--p-t3);background:var(--p-surface);
+    border:1px solid var(--p-line);border-radius:999px;padding:5px 12px}
+  .fresh .dot{width:7px;height:7px;border-radius:50%;background:var(--p-success);box-shadow:0 0 0 3px #10B98122}
+  .seg{display:flex;background:var(--p-surface);border:1px solid var(--p-line);border-radius:10px;padding:3px;gap:2px}
+  .seg button{border:none;background:transparent;font-size:12.5px;color:var(--p-t3);padding:5px 13px;border-radius:8px;
+    cursor:pointer;font-family:inherit;transition:all .15s}
+  .seg button:hover{color:var(--p-text)}
+  .seg button.on{background:var(--el-primary);color:#fff;font-weight:600}
+
+  /* 警示条 */
+  .notice{display:flex;gap:10px;align-items:flex-start;background:#FFFBEB;border:1px solid #FDE68A;
+    border-radius:12px;padding:10px 14px;font-size:12.5px;color:#92600A;margin-bottom:16px}
+  .notice .ic{flex-shrink:0;margin-top:1px;display:flex}
+  .notice .ic svg{width:15px;height:15px;display:block}
+  .notice.blue{background:#EFF4FF;border-color:#C7D7FE;color:#3B5AE6}
+
+  /* KPI */
+  .kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:16px}
+  .kpi-row.k4{grid-template-columns:repeat(4,1fr)}
+  .kpi-row.k2{grid-template-columns:repeat(2,1fr)}
+  .kpi{background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-r);padding:16px 18px 14px;position:relative;overflow:hidden}
+  .kpi .lb{font-size:12px;color:var(--p-t3);white-space:nowrap}
+  .kpi .vl{font-size:27px;font-weight:700;color:var(--aink);margin-top:6px;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1.15}
+  .kpi .vl small{font-size:12px;font-weight:500;color:var(--p-t4);margin-left:2px;letter-spacing:0}
+  .kpi .cmp{font-size:11px;color:var(--p-t4);margin-top:5px;white-space:nowrap}
+  .kpi.k-hi .vl{color:var(--abad)}
+  .kpi.k-mid .vl{color:#D97706}
+  .kpi.k-watch .vl{color:var(--p-primary)}
+  .kpi .bar{position:absolute;left:0;top:0;bottom:0;width:3px}
+
+  /* 图表 */
+  .chart-row{display:grid;grid-template-columns:7fr 5fr;gap:14px;margin-bottom:16px}
+  .chart-row.even{grid-template-columns:1fr 1fr}
+  .card{background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-r);padding:18px 20px}
+  .card .ct{font-size:14.5px;font-weight:600;color:var(--aink)}
+  .card .cs{font-size:11.5px;color:var(--p-t4);margin-top:2px}
+  .legend{display:flex;gap:14px;font-size:11.5px;color:var(--p-t3);margin-top:2px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2.5px;margin-right:5px;vertical-align:-1px}
+  svg text{font-family:inherit}
+  .hbar-row{display:flex;align-items:center;gap:10px;margin-top:9px}
+  .hbar-name{width:92px;text-align:right;font-size:12px;color:var(--p-t2);flex-shrink:0;white-space:nowrap}
+  .hbar-track{flex:1;display:flex;height:16px;border-radius:4px;overflow:hidden;background:var(--p-fill)}
+  .hbar-track div{height:100%}
+  .hbar-track.solid div{border-radius:4px}
+  .hbar-val{width:64px;font-size:11.5px;color:var(--p-t4);font-variant-numeric:tabular-nums;flex-shrink:0}
+
+  /* 筛选 + 表格 */
+  .filter-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .filter-bar label{font-size:12.5px;color:var(--p-t3)}
+  select,.search{height:34px;border:1px solid var(--p-line2);border-radius:9px;background:var(--p-surface);
+    font-size:13px;color:var(--p-text);padding:0 10px;font-family:inherit;outline:none;cursor:pointer}
+  select:focus,.search:focus{border-color:var(--el-primary-l3)}
+  .search{width:200px;cursor:text}
+  .btn-ghost{height:34px;border:1px solid var(--p-line2);background:var(--p-surface);border-radius:9px;
+    font-size:13px;color:var(--p-t2);padding:0 14px;cursor:pointer;font-family:inherit}
+  .btn-ghost:hover{background:var(--p-fill)}
+  .btn-ghost.danger{color:var(--abad)}
+  .btn-ghost.danger:hover{background:var(--abad-bg)}
+  .btn-primary{height:34px;border:none;background:var(--el-primary);border-radius:9px;font-size:13px;color:#fff;
+    padding:0 16px;cursor:pointer;font-family:inherit;font-weight:500;display:inline-flex;align-items:center;gap:7px}
+  .btn-primary:hover{background:var(--el-primary-d2)}
+  .btn-primary.lg{height:42px;padding:0 26px;font-size:14.5px;border-radius:11px}
+  .tbl-wrap{background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-r);overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{background:#FAFBFD;border-bottom:1px solid var(--p-line);color:var(--p-t3);font-weight:600;
+    font-size:12px;padding:11px 12px;text-align:left;white-space:nowrap}
+  tbody td{padding:10px 12px;border-bottom:1px solid #F3F6FA;white-space:nowrap;color:var(--p-t2)}
+  tbody tr:hover{background:var(--p-hover)}
+  tbody tr:last-child td{border-bottom:none}
+  td.num{font-variant-numeric:tabular-nums}
+  .tag{display:inline-flex;align-items:center;font-size:11px;font-weight:600;border-radius:6px;padding:2px 9px;letter-spacing:.3px}
+  .tag.hi{color:var(--abad);background:var(--abad-bg)}
+  .tag.mid{color:#B45309;background:#FEF3C7}
+  .tag.watch{color:var(--p-primary);background:#E8F1FE}
+  .tag.ok{color:var(--p-success);background:#E9F9F1}
+  .tag.off{color:var(--p-t4);background:var(--p-fill)}
+  .tag.blue{color:var(--el-primary);background:var(--el-primary-l9)}
+  .ev{font-size:11.5px;color:var(--p-t4)}
+  .link{color:var(--el-primary);cursor:pointer;font-size:12.5px}
+  .link:hover{text-decoration:underline}
+  .link + .link{margin-left:10px}
+  .link.danger{color:var(--abad)}
+  .tbl-foot{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;font-size:12.5px;color:var(--p-t3)}
+  .pager{display:flex;gap:6px}
+  .pager button{min-width:30px;height:30px;border:1px solid var(--p-line2);background:var(--p-surface);border-radius:8px;
+    font-size:12.5px;color:var(--p-t2);cursor:pointer;font-family:inherit}
+  .pager button.on{background:var(--el-primary-l9);color:var(--el-primary);border-color:var(--el-primary-l8);font-weight:600}
+  .pager button:disabled{opacity:.4;cursor:default}
+
+  /* 开关 */
+  .sw{width:36px;height:20px;border-radius:999px;background:#CBD5E1;position:relative;cursor:pointer;transition:background .18s;flex-shrink:0;display:inline-block;vertical-align:middle}
+  .sw::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:left .18s;box-shadow:0 1px 2px #0003}
+  .sw.on{background:var(--p-success)}
+  .sw.on::after{left:18px}
+
+  /* 图标格（智能体图标） */
+  .ag-ic{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;font-size:21px}
+
+  /* 弹窗 */
+  .mask{position:fixed;inset:0;background:#0F172A55;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
+  .mask.show{opacity:1;pointer-events:auto}
+  .modal{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.97);width:600px;max-width:94vw;max-height:88vh;overflow:auto;
+    background:var(--p-surface);border-radius:16px;box-shadow:0 24px 80px #0f172a33;z-index:52;opacity:0;pointer-events:none;transition:all .2s}
+  .modal.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+  .md-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--p-line);position:sticky;top:0;background:var(--p-surface)}
+  .md-head .t{font-size:16px;font-weight:700;color:var(--aink)}
+  .md-close{border:none;background:var(--p-fill);width:30px;height:30px;border-radius:8px;cursor:pointer;color:var(--p-t3);font-size:14px}
+  .md-body{padding:18px 22px 8px}
+  .md-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px 18px}
+  .fm-row{display:flex;align-items:flex-start;gap:12px;margin-bottom:13px}
+  .fm-label{width:88px;text-align:right;font-size:13px;color:var(--p-t2);padding-top:8px;flex-shrink:0}
+  .fm-label.req::after{content:" *";color:var(--abad);font-weight:700}
+  .fm-body{flex:1}
+  .fm-i{width:100%;height:36px;border:1px solid var(--p-line2);border-radius:9px;padding:0 12px;font-size:13px;font-family:inherit;outline:none;background:var(--p-surface);color:var(--p-text)}
+  .fm-i:focus{border-color:var(--el-primary-l3)}
+  textarea.fm-i{height:70px;padding:8px 12px;resize:vertical;line-height:1.5}
+  .fm-hint{font-size:11px;color:var(--p-t4);margin-top:4px}
+  .fm-body .sw{margin-top:7px}
+
+  /* 锡锡跳转页 */
+  .xixi-hero{background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-r);padding:26px 28px;
+    display:flex;align-items:center;gap:22px;margin-bottom:16px}
+  .xixi-hero .mk{width:58px;height:58px;border-radius:15px;background:linear-gradient(135deg,#0c1a33,#2c5fa8);color:#e3c98a;
+    font-size:26px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .xixi-hero .t{font-size:17px;font-weight:700;color:var(--aink)}
+  .xixi-hero .d{font-size:12.5px;color:var(--p-t3);margin-top:4px;line-height:1.7;max-width:640px}
+  .opgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .op{background:var(--p-surface);border:1px solid var(--p-line);border-radius:12px;padding:15px 16px}
+  .op .ic{width:24px;height:24px;color:var(--el-primary);display:flex;align-items:center;justify-content:center;margin-bottom:10px}
+  .op .ic svg{width:22px;height:22px;display:block}
+  .op .t{font-size:13.5px;font-weight:600;color:var(--aink)}
+  .op .d{font-size:11.5px;color:var(--p-t4);margin-top:3px;line-height:1.55}
+
+  /* 大模型配置 */
+  .llm-wrap{display:grid;grid-template-columns:240px 1fr;gap:14px;align-items:start}
+  .prov{background:var(--p-surface);border:1px solid var(--p-line);border-radius:var(--p-r);overflow:hidden}
+  .prov-item{display:flex;align-items:center;gap:10px;padding:13px 15px;cursor:pointer;border-bottom:1px solid #F3F6FA;font-size:13.5px;color:var(--p-t2)}
+  .prov-item:last-child{border-bottom:none}
+  .prov-item:hover{background:var(--p-hover)}
+  .prov-item.on{background:var(--el-primary-l9);color:var(--el-primary);font-weight:600}
+  .prov-item .pv-ic{width:20px;height:20px;display:flex;align-items:center;justify-content:center;color:var(--el-primary);flex-shrink:0}
+  .prov-item .pv-ic svg{width:19px;height:19px;display:block}
+  .prov-item .live{margin-left:auto;font-size:10px;color:var(--p-success);font-weight:700;letter-spacing:.5px}
+  .prov-add{padding:13px 15px;color:var(--p-t3);font-size:12.5px;cursor:pointer}
+  .prov-add:hover{color:var(--el-primary)}
+  .kv-form{max-width:640px}
+  .kv-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #F3F6FA}
+  .kv-row .k{width:150px;font-size:13px;color:var(--p-t3);flex-shrink:0;font-variant-numeric:tabular-nums}
+  .kv-row .v{flex:1}
+  .mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:12px}
+
+  /* 抽屉 */
+  .drawer{position:fixed;top:0;right:-500px;width:480px;max-width:92vw;height:100vh;background:var(--p-surface);
+    box-shadow:-12px 0 40px #0f172a1f;z-index:51;transition:right .25s ease;display:flex;flex-direction:column}
+  .drawer.show{right:0}
+  .dw-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--p-line)}
+  .dw-head .t{font-size:16px;font-weight:700;color:var(--aink)}
+  .dw-close{border:none;background:var(--p-fill);width:30px;height:30px;border-radius:8px;cursor:pointer;color:var(--p-t3);font-size:14px}
+  .dw-body{flex:1;overflow-y:auto;padding:18px 22px}
+  .dw-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:18px}
+  .dw-kpi{background:var(--p-fill);border-radius:11px;padding:10px 11px}
+  .dw-kpi .l{font-size:10.5px;color:var(--p-t3)}
+  .dw-kpi .v{font-size:17px;font-weight:700;color:var(--aink);font-variant-numeric:tabular-nums;margin-top:3px}
+  .dw-sec{font-size:13px;font-weight:600;color:var(--aink);margin:16px 0 9px}
+  .sig-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F3F6FA;font-size:12.5px}
+  .sig-row .n{color:var(--p-t2)}
+  .sig-row .p{font-variant-numeric:tabular-nums;font-weight:600}
+  .p.low{color:var(--abad)} .p.mid{color:#D97706} .p.ok{color:var(--p-success)}
+  .check-row{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--p-t2);padding:6px 0}
+  .check-row .ok{color:var(--p-success);font-weight:700}
+  .dw-note{margin-top:18px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:10px 13px;font-size:11.5px;color:#92600A;line-height:1.7}
+
+  .toast{position:fixed;left:50%;top:76px;transform:translateX(-50%) translateY(-8px);background:#0F172A;color:#fff;
+    font-size:13px;border-radius:10px;padding:9px 18px;opacity:0;pointer-events:none;transition:all .25s;z-index:99;
+    box-shadow:0 8px 24px #0f172a40}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  .foot-note{text-align:center;font-size:11.5px;color:var(--p-t4);margin-top:18px}
+  @media (max-width:1380px){ .kpi-row{grid-template-columns:repeat(3,1fr)} .kpi-row.k4{grid-template-columns:repeat(2,1fr)} }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- ============ 侧栏 ============ -->
+  <aside class="el-sidebar">
+    <div class="side-brand">
+      <img class="mark-img" src="v2-logo.png" alt="无锡职业技术大学校徽">
+      <div><div class="t1">锡职大 AI中台</div><div class="t2">AGENT PLAZA · ADMIN</div></div>
+    </div>
+    <nav class="side-menu">
+      <div class="el-menu-item active" data-page="dashboard"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>仪表盘</div>
+      <div class="el-menu-item" data-page="agents"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></svg></span>智能体管理</div>
+      <div class="el-menu-item" data-page="cats"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/></svg></span>分类管理</div>
+      <div class="el-menu-item" data-page="models"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></span>模型管理</div>
+      <div class="el-menu-item" data-page="users"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.5-3.4 3-5 6-5s5.5 1.6 6 5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.5c2.6.3 4.3 1.8 4.7 4.3"/></svg></span>用户管理</div>
+      <div class="el-menu-item" data-page="funding"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-7.4-4.6-9-8.8C1.9 8 3.6 5 6.5 5c1.9 0 3.2 1 4.1 2.3h2.8C14.3 6 15.6 5 17.5 5c2.9 0 4.6 3 3.5 6.2C19.4 15.4 12 20 12 20z"/></svg></span>精准资助分析<span class="new-chip">NEW</span></div>
+      <div class="menu-group">系统设置</div>
+      <div class="el-menu-item sub" data-page="xixi"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="13" width="4" height="7" rx="2"/><rect x="17" y="13" width="4" height="7" rx="2"/></svg></span>锡锡导员管理</div>
+      <div class="el-menu-item sub" data-page="llm"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h9M19 6h1M4 12h3M13 12h7M4 18h9M19 18h1"/><circle cx="15.5" cy="6" r="2"/><circle cx="9.5" cy="12" r="2"/><circle cx="15.5" cy="18" r="2"/></svg></span>大模型配置</div>
+      <div class="el-menu-item sub" data-page="basic"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M2.5 12h3M18.5 12h3M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg></span>基础配置</div>
+      <div class="el-menu-item sub" data-page="files"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>文件管理</div>
+      <div class="el-menu-item sub" data-page="logs"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2.5H6a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8.5z"/><path d="M14 2.5v6h6M9 13h6M9 17h4"/></svg></span>操作日志</div>
+    </nav>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <div class="main">
+    <header class="el-header">
+      <div class="hd-left"><span class="crumb">管理后台 /</span> <span id="crumb">仪表盘</span></div>
+      <div class="hd-right">
+        <span class="proto-badge">V2 预览 · 示例数据</span>
+        <div class="hd-user"><div class="ava">张</div><span class="nm">张小艾</span><span class="arr">▾</span></div>
+      </div>
+    </header>
+
+    <div class="dash">
+
+      <!-- ==================== 仪表盘 ==================== -->
+      <section class="page-view on" id="pv-dashboard">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">仪表盘</div>
+            <div class="ph-sub">平台核心数据概览 · 数据每日更新</div>
+          </div>
+          <div class="ph-right">
+            <div class="fresh"><span class="dot"></span>数据截至 2026-11-20 16:00</div>
+          </div>
+        </div>
+
+        <div class="kpi-row k4" id="dashKpi"></div>
+
+        <div class="chart-row even">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div><div class="ct">近 7 日对话量趋势</div><div class="cs">全平台智能体对话次数 · 今日 2,580 次 · 活跃用户 252 人</div></div>
+            </div>
+            <div id="trendChart" style="margin-top:14px"></div>
+          </div>
+          <div class="card">
+            <div class="ct">智能体分类分布</div>
+            <div class="cs">共 55 个智能体 · 8 个分类</div>
+            <div id="catBars" style="margin-top:12px"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="ct">今日热门智能体 TOP5</div>
+          <div class="cs">按今日对话次数排序</div>
+          <div id="topAgents" style="margin-top:12px"></div>
+        </div>
+      </section>
+
+      <!-- ==================== 智能体管理 ==================== -->
+      <section class="page-view" id="pv-agents">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">智能体管理</div>
+            <div class="ph-sub">维护广场上的全部智能体 · 当前共 55 个</div>
+          </div>
+          <div class="ph-right">
+            <button class="btn-primary" id="btnAddAgent">＋ 新增智能体</button>
+          </div>
+        </div>
+
+        <div class="filter-bar">
+          <label>分类</label>
+          <select id="agCat"><option value="">全部分类</option></select>
+          <label>状态</label>
+          <select id="agStat"><option value="">全部状态</option><option value="1">启用</option><option value="0">停用</option></select>
+          <input class="search" id="agQ" placeholder="搜索名称 / 描述 / 标签">
+          <button class="btn-ghost" id="agReset">重置</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>图标</th><th>名称</th><th>分类</th><th>描述</th>
+              <th>推荐</th><th>状态</th><th>操作</th>
+            </tr></thead>
+            <tbody id="agBody"></tbody>
+          </table>
+          <div class="tbl-foot">
+            <span id="agFoot"></span>
+            <div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>3</button><button>›</button></div>
+          </div>
+        </div>
+
+        <div class="notice blue" style="margin-top:14px"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8h.01"/></svg></span>
+          <span>临时下线智能体优先使用「停用」而非「删除」——停用可随时恢复，配置完整保留。删除后卡片从广场即时消失，不可恢复。</span>
+        </div>
+      </section>
+
+      <!-- ==================== 分类管理 ==================== -->
+      <section class="page-view" id="pv-cats">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">分类管理</div>
+            <div class="ph-sub">维护广场的分类标签 · 当前 8 个分类 · 建议保持在 8–10 个以内</div>
+          </div>
+          <div class="ph-right">
+            <button class="btn-primary" onclick="toast('新增分类（演示）')">＋ 新增分类</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>图标</th><th>分类名称</th><th style="text-align:right">排序</th><th style="text-align:right">智能体数</th>
+              <th>启用</th><th>操作</th>
+            </tr></thead>
+            <tbody id="catBody"></tbody>
+          </table>
+          <div class="tbl-foot"><span>共 8 个分类</span></div>
+        </div>
+        <div class="notice blue" style="margin-top:14px"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8h.01"/></svg></span>
+          <span>删除分类前请先移走或删除该分类下的智能体；停用分类后，广场将不再显示该分类标签。</span>
+        </div>
+      </section>
+
+      <!-- ==================== 模型管理 ==================== -->
+      <section class="page-view" id="pv-models">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">模型管理</div>
+            <div class="ph-sub">维护「模型服务」页向师生展示的模型条目 · 当前共 12 个</div>
+          </div>
+          <div class="ph-right">
+            <button class="btn-primary" onclick="toast('新增模型（演示）')">＋ 新增模型</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>模型名称</th><th>供应商</th><th>类型</th><th>描述</th><th style="text-align:right">排序</th><th>状态</th><th>操作</th>
+            </tr></thead>
+            <tbody id="mdlBody"></tbody>
+          </table>
+          <div class="tbl-foot"><span>共 12 个模型 · 平台实际调用的大模型供应商与密钥在『系统设置 → 大模型配置』中设置</span></div>
+        </div>
+      </section>
+
+      <!-- ==================== 用户管理 ==================== -->
+      <section class="page-view" id="pv-users">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">用户管理</div>
+            <div class="ph-sub">管理后台的登录账号 · 当前共 9 个 · 管理员账号实名对应到人</div>
+          </div>
+          <div class="ph-right">
+            <button class="btn-primary" onclick="toast('新增用户（演示）')">＋ 新增用户</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>ID</th><th>用户名</th><th>昵称</th><th>角色</th><th>来源</th><th>状态</th><th>创建时间</th><th>操作</th>
+            </tr></thead>
+            <tbody id="usrBody"></tbody>
+          </table>
+          <div class="tbl-foot"><span>共 9 个账号 · CAS 统一身份认证账号的密码随学校统一认证体系，无需在此重置</span></div>
+        </div>
+      </section>
+
+      <!-- ==================== 精准资助分析 ==================== -->
+      <section class="page-view" id="pv-funding">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">精准资助分析</div>
+            <div class="ph-sub">基于一卡通消费行为的隐性困难识别 · 南理工「暖心饭卡」模式 · 面向学工/资助中心</div>
+          </div>
+          <div class="ph-right">
+            <div class="fresh"><span class="dot"></span>数据截至 2026-11-19</div>
+            <div class="seg" id="winSeg">
+              <button data-w="14">近14天</button>
+              <button data-w="30" class="on">近30天</button>
+              <button data-w="60">近60天</button>
+              <button data-w="90">近90天</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="notice"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4M12 17.2h.01"/></svg></span>
+          <span>本页结果为<b>算法生成的资助工作线索</b>，不构成困难认定。请结合谈心谈话、家庭情况复核后，按学校资助工作流程处理；学生个人信息仅限授权岗位查看，导出操作将记录审计日志。</span>
+        </div>
+
+        <div class="kpi-row" id="kpiRow"></div>
+
+        <div class="chart-row">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div><div class="ct">各学院线索分布</div><div class="cs">同学院同年级基准分位口径 · 高/中/关注三档人数</div></div>
+              <div class="legend">
+                <span><i style="background:var(--abad)"></i>高关注</span>
+                <span><i style="background:#FBBF24"></i>中关注</span>
+                <span><i style="background:var(--p-secondary)"></i>观察</span>
+              </div>
+            </div>
+            <div id="collegeBars" style="margin-top:12px"></div>
+          </div>
+          <div class="card">
+            <div class="ct">单顿均价分位分布</div>
+            <div class="cs">达标人群（月就餐 ≥40 顿）· 分位越低消费越省</div>
+            <div id="histChart"></div>
+          </div>
+        </div>
+
+        <div class="filter-bar">
+          <label>学院</label>
+          <select id="fCollege"><option value="">全部学院</option></select>
+          <label>年级</label>
+          <select id="fGrade">
+            <option value="">全部年级</option><option>2026级</option><option>2025级</option>
+            <option>2024级</option><option>2023级</option>
+          </select>
+          <label>档位</label>
+          <select id="fLevel">
+            <option value="">全部档位</option><option value="hi">高关注</option>
+            <option value="mid">中关注</option><option value="watch">观察</option>
+          </select>
+          <input class="search" id="fSearch" placeholder="搜索学号 / 姓名">
+          <button class="btn-ghost" id="btnReset">重置</button>
+          <span style="flex:1"></span>
+          <button class="btn-primary" id="btnExport">⤓ 导出名单</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>学号</th><th>姓名</th><th>学院</th><th>年级</th><th>档位</th>
+              <th style="text-align:right">月就餐(顿)</th><th style="text-align:right">单顿均价(元)</th>
+              <th style="text-align:right">月食堂支出(元)</th><th style="text-align:right">消费分位</th>
+              <th>信号证据</th><th>操作</th>
+            </tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          <div class="tbl-foot">
+            <span id="footInfo"></span>
+            <div class="pager" id="pager"></div>
+          </div>
+        </div>
+
+        <div class="foot-note">V2 预览 · 示例数据（正式版数据源：一卡通消费 t_ykt_jkb · 学籍 t_bzks · 请假 xsqjb · 只读数仓）</div>
+      </section>
+
+      <!-- ==================== 锡锡导员管理 ==================== -->
+      <section class="page-view" id="pv-xixi">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">锡锡导员管理</div>
+            <div class="ph-sub">语音智能体平台（线上虚拟助手 + 线下实体终端）· 独立管理体系</div>
+          </div>
+        </div>
+
+        <div class="xixi-hero">
+          <div class="mk">锡</div>
+          <div style="flex:1">
+            <div class="t">锡锡导员管理平台</div>
+            <div class="d">承载语音对话智能体、音色、设备与聊天记录管理。与 AI 中台账号体系独立，统一身份认证账号两边通用。点击下方按钮将<b>自动携带票据跳转</b>（60 秒一次性票据），无需二次登录。</div>
+          </div>
+          <button class="btn-primary lg" onclick="toast('演示环境不真实跳转 · 正式版将携带票据跳转 http://210.28.144.49:8002/')">前往锡锡导员管理平台 →</button>
+        </div>
+
+        <div class="opgrid">
+          <div class="op"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></div><div class="t">添加智能体</div><div class="d">新建语音智能体并『配置角色』人设。</div></div>
+          <div class="op"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></div><div class="t">音色克隆</div><div class="d">配置与克隆智能体的 TTS 音色。</div></div>
+          <div class="op"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10v4M7.5 7v10M11.5 4v16M15.5 7v10M19.5 10v4"/></svg></div><div class="t">声纹识别</div><div class="d">管理说话人声纹与免唤醒。</div></div>
+          <div class="op"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8.5 20h7M12 16v4"/></svg></div><div class="t">设备管理</div><div class="d">线下实体终端的接入与绑定。</div></div>
+          <div class="op"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div><div class="t">知识库</div><div class="d">维护制度与业务知识内容。</div></div>
+          <div class="op"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></div><div class="t">模型配置</div><div class="d">语音链路 LLM / TTS 供应商设置。</div></div>
+          <div class="op"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4.5h5.5a4 4 0 0 1 4 4V20a3 3 0 0 0-3-3H2.5z"/><path d="M21.5 4.5H16a4 4 0 0 0-4 4V20a3 3 0 0 1 3-3h6.5z"/></svg></div><div class="t">参数字典</div><div class="d">运行参数与业务字典维护。</div></div>
+          <div class="op"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 14.5a2 2 0 0 1-2 2H7.5l-4.5 4v-16a2 2 0 0 1 2-2H19a2 2 0 0 1 2 2z"/></svg></div><div class="t">聊天记录</div><div class="d">回看终端与线上会话记录。</div></div>
+        </div>
+
+        <div class="notice blue"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8h.01"/></svg></span>
+          <span>当前已配置「<b>锡锡导员-全校</b>」（通义千问 + EdgeTTS 晓晓）与「<b>制度政策 Agent</b>」（DeepSeek）等智能体；语音智能体的模型、音色、设备均在锡锡平台配置，不占用 AI 中台的模型管理。</span>
+        </div>
+      </section>
+
+      <!-- ==================== 大模型配置 ==================== -->
+      <section class="page-view" id="pv-llm">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">大模型配置</div>
+            <div class="ph-sub">平台调用的大模型供应商与密钥 · 当前生效 DeepSeek（deepseek-v4-flash）</div>
+          </div>
+        </div>
+
+        <div class="llm-wrap">
+          <div class="prov" id="provList"></div>
+          <div class="card">
+            <div class="ct" id="llmTitle">DeepSeek</div>
+            <div class="cs" id="llmSub">当前生效供应商 · 切换将影响全平台对话效果</div>
+            <div class="kv-form" style="margin-top:10px">
+              <div class="kv-row"><span class="k">供应商名称</span><span class="v"><input class="fm-i" value="DeepSeek"></span></div>
+              <div class="kv-row"><span class="k">API 地址</span><span class="v"><input class="fm-i mono" value="https://api.deepseek.com/v1"></span></div>
+              <div class="kv-row"><span class="k">API 密钥</span><span class="v"><input class="fm-i mono" type="password" value="sk-demo-key-000000000000"></span></div>
+              <div class="kv-row"><span class="k">默认模型</span><span class="v"><input class="fm-i mono" value="deepseek-v4-flash"></span></div>
+              <div class="kv-row"><span class="k">温度（temperature）</span><span class="v"><input class="fm-i" value="0.7"></span></div>
+              <div class="kv-row"><span class="k">最大 Tokens</span><span class="v"><input class="fm-i" value="4096"></span></div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px">
+              <button class="btn-primary" onclick="toast('测试连接成功 · 延迟 86ms（演示）')">测试连接</button>
+              <button class="btn-ghost" onclick="toast('已保存供应商配置（演示）')">保存配置</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="notice" style="margin-top:14px"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4M12 17.2h.01"/></svg></span>
+          <span>更换大模型供应商会<b>直接影响全平台的对话效果</b>。操作顺序建议：『添加自定义供应商』→ 填写 API 地址与密钥 → 点击『测试连接』确认可用 → 再切换默认模型。删除供应商配置前需二次确认，请勿在业务高峰期切换。</span>
+        </div>
+      </section>
+
+      <!-- ==================== 基础配置 ==================== -->
+      <section class="page-view" id="pv-basic">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">基础配置</div>
+            <div class="ph-sub">站点名称、页脚与上传限制等全局参数</div>
+          </div>
+        </div>
+        <div class="card" style="max-width:760px">
+          <div class="kv-form">
+            <div class="kv-row"><span class="k mono">site_name</span><span class="v"><input class="fm-i" value="锡职大AI中台"><div class="fm-hint">站点名称，显示在页面标题</div></span></div>
+            <div class="kv-row"><span class="k mono">site_footer</span><span class="v"><input class="fm-i" value="无锡职业技术大学 · 信息中心"><div class="fm-hint">页脚文案</div></span></div>
+            <div class="kv-row"><span class="k mono">upload_max_size</span><span class="v"><input class="fm-i" value="10"><div class="fm-hint">上传大小上限（MB），当前 10 MB</div></span></div>
+            <div class="kv-row"><span class="k mono">upload_allowed_types</span><span class="v"><input class="fm-i mono" value="png,jpg,jpeg,gif,svg,pdf,doc,docx,xls,xlsx,zip"><div class="fm-hint">允许上传的文件类型，逗号分隔</div></span></div>
+          </div>
+          <div style="margin-top:16px">
+            <button class="btn-primary" onclick="toast('基础配置已保存（演示）')">保存配置</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== 文件管理 ==================== -->
+      <section class="page-view" id="pv-files">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">文件管理</div>
+            <div class="ph-sub">后台上传文件的统一管理 · 上传受基础配置的大小上限与类型白名单约束</div>
+          </div>
+          <div class="ph-right">
+            <button class="btn-primary" onclick="toast('上传文件（演示）')">⤒ 上传文件</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>文件名</th><th>类型</th><th style="text-align:right">大小</th><th>上传人</th><th>上传时间</th><th>引用</th><th>操作</th>
+            </tr></thead>
+            <tbody id="fileBody"></tbody>
+          </table>
+          <div class="tbl-foot"><span id="fileFoot"></span><div class="pager"><button disabled>‹</button><button class="on">1</button><button>›</button></div></div>
+        </div>
+        <div class="notice blue" style="margin-top:14px"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8h.01"/></svg></span>
+          <span>被引用中的文件删除前请先确认，避免页面图片失效。支持预览、下载与删除。</span>
+        </div>
+      </section>
+
+      <!-- ==================== 操作日志 ==================== -->
+      <section class="page-view" id="pv-logs">
+        <div class="page-head">
+          <div>
+            <div class="ph-title">操作日志</div>
+            <div class="ph-sub">管理端关键操作记录 · 按时间倒序 · 只读不可编辑</div>
+          </div>
+        </div>
+        <div class="filter-bar">
+          <label>操作人</label>
+          <select id="logUser"><option value="">全部操作人</option><option>张小艾</option><option>乔巍</option><option>admin</option></select>
+          <label>模块</label>
+          <select id="logMod"><option value="">全部模块</option><option>智能体管理</option><option>分类管理</option><option>用户管理</option><option>大模型配置</option><option>基础配置</option><option>精准资助分析</option></select>
+          <button class="btn-ghost" onclick="toast('已刷新（演示）')">刷新</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>时间</th><th>操作人</th><th>模块</th><th>操作内容</th></tr></thead>
+            <tbody id="logBody"></tbody>
+          </table>
+          <div class="tbl-foot"><span id="logFoot"></span><div class="pager"><button disabled>‹</button><button class="on">1</button><button>2</button><button>›</button></div></div>
+        </div>
+        <div class="notice blue" style="margin-top:14px"><span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.8h.01"/></svg></span>
+          <span>排查「配置何时被谁改动」类问题时优先查阅本页。异常排查顺序：先看操作日志确认近期变更 → 再检查对应配置页当前值 → 最后验证前台表现。</span>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- 智能体编辑弹窗 -->
+<div class="mask" id="mask"></div>
+<div class="modal" id="agentModal">
+  <div class="md-head"><div class="t" id="amTitle">新增智能体</div><button class="md-close" id="amClose">✕</button></div>
+  <div class="md-body">
+    <div class="fm-row"><span class="fm-label req">名称</span><div class="fm-body"><input class="fm-i" id="amName" placeholder="智能体显示名称，建议带学院/业务前缀"></div></div>
+    <div class="fm-row"><span class="fm-label">图标 (emoji)</span><div class="fm-body"><input class="fm-i" id="amIcon" placeholder="填一个 emoji 字符，如 🎓 📚" style="width:120px"></div></div>
+    <div class="fm-row"><span class="fm-label">分类</span><div class="fm-body"><select class="fm-i" id="amCat"></select></div></div>
+    <div class="fm-row"><span class="fm-label">描述</span><div class="fm-body"><input class="fm-i" id="amDesc" placeholder="一句话简介，显示在广场卡片上"></div></div>
+    <div class="fm-row"><span class="fm-label">详情</span><div class="fm-body"><textarea class="fm-i" id="amDetail" placeholder="详细介绍（长文本），进入智能体页时展示"></textarea></div></div>
+    <div class="fm-row"><span class="fm-label">外部链接</span><div class="fm-body"><input class="fm-i mono" id="amUrl" placeholder="填写后点击卡片将跳转外部链接，不再进入站内对话"></div></div>
+    <div class="fm-row"><span class="fm-label">标签</span><div class="fm-body"><input class="fm-i" id="amTags" placeholder="逗号分隔，如：学生, 日常, 管理"><div class="fm-hint">用于检索</div></div></div>
+    <div class="fm-row"><span class="fm-label">推荐</span><div class="fm-body"><span class="sw" id="amRec"></span><span class="fm-hint" style="display:inline-block;margin-left:9px">开启后在广场优先展示</span></div></div>
+    <div class="fm-row"><span class="fm-label">排序</span><div class="fm-body"><input class="fm-i" id="amSort" type="number" value="100" style="width:120px"><div class="fm-hint">数值越小排列越靠前</div></div></div>
+    <div class="fm-row"><span class="fm-label">启用</span><div class="fm-body"><span class="sw on" id="amEnable"></span><span class="fm-hint" style="display:inline-block;margin-left:9px">关闭后广场不显示该智能体</span></div></div>
+  </div>
+  <div class="md-foot">
+    <button class="btn-ghost" id="amCancel">取消</button>
+    <button class="btn-primary" id="amSave">保存</button>
+  </div>
+</div>
+
+<!-- 精准资助详情抽屉 -->
+<div class="drawer" id="drawer">
+  <div class="dw-head"><div class="t" id="dwTitle">学生线索详情</div><button class="dw-close" id="dwClose">✕</button></div>
+  <div class="dw-body" id="dwBody"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===================== 全局：页面切换 ===================== */
+const CRUMBS={dashboard:"仪表盘",agents:"智能体管理",cats:"分类管理",models:"模型管理",users:"用户管理",
+  funding:"精准资助分析",xixi:"锡锡导员管理",llm:"大模型配置",basic:"基础配置",files:"文件管理",logs:"操作日志"};
+document.querySelectorAll('.el-menu-item[data-page]').forEach(mi=>{
+  mi.onclick=()=>{
+    document.querySelectorAll('.el-menu-item').forEach(x=>x.classList.remove('active'));
+    mi.classList.add('active');
+    const p=mi.dataset.page;
+    document.querySelectorAll('.page-view').forEach(v=>v.classList.remove('on'));
+    document.getElementById('pv-'+p).classList.add('on');
+    document.getElementById('crumb').textContent=CRUMBS[p];
+    window.scrollTo(0,0);
+  };
+});
+
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove('show'),2200);
+}
+/* 开关通用切换 */
+document.addEventListener('click',e=>{
+  const sw=e.target.closest('.sw');
+  if(sw && !sw.closest('.md-body') && sw.id!=='amRec' && sw.id!=='amEnable'){ sw.classList.toggle('on'); }
+});
+
+/* ===================== 仪表盘 ===================== */
+function renderDashboard(){
+  const kpis=[
+    {lb:"智能体",vl:"55",cmp:"较上月 +3",bar:"var(--el-primary)"},
+    {lb:"分类",vl:"8",cmp:"覆盖广场全部标签",bar:"var(--p-secondary)"},
+    {lb:"模型",vl:"12",cmp:"模型服务页条目",bar:"#8B5CF6"},
+    {lb:"用户",vl:"9",cmp:"后台账号 · 含管理员",bar:"var(--p-success)"}
+  ];
+  document.getElementById('dashKpi').innerHTML=kpis.map(k=>
+    `<div class="kpi"><span class="bar" style="background:${k.bar}"></span>
+     <div class="lb">${k.lb}</div><div class="vl">${k.vl}</div><div class="cmp">${k.cmp}</div></div>`).join("");
+
+  // 近7日对话趋势
+  const days=["11-14","11-15","11-16","11-17","11-18","11-19","11-20"];
+  const vals=[2340,2510,2680,2420,2590,2610,2580];
+  const W=520,H=200,pad=10,max=2900,min=2100,bw=(W-2*pad)/7;
+  const bars=vals.map((v,i)=>{
+    const h=(v-min)/(max-min)*(H-46),x=pad+i*bw,y=H-28-h;
+    const today=i===6;
+    return `<rect x="${(x+6).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw-12).toFixed(1)}" height="${h.toFixed(1)}" rx="3.5"
+      fill="${today?'var(--el-primary)':'#C3D4F7'}"><title>${days[i]}：${v.toLocaleString()} 次</title></rect>
+      <text x="${(x+bw/2).toFixed(1)}" y="${(y-7).toFixed(1)}" font-size="9.5" fill="${today?'var(--el-primary)':'#94A3B8'}" text-anchor="middle" font-weight="${today?700:400}">${v.toLocaleString()}</text>`;
+  }).join("");
+  const labels=days.map((d,i)=>`<text x="${(pad+i*bw+bw/2).toFixed(1)}" y="${H-9}" font-size="9.5" fill="#94A3B8" text-anchor="middle">${d}</text>`).join("");
+  document.getElementById('trendChart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%">${bars}${labels}</svg>`;
+
+  // 分类分布
+  const cats=[["锡锡导员",12],["学生管理",18],["教师工作",6],["教务教学",5],["科研管理",4],["后勤管理",3],["其他特色",5],["制度建设",2]];
+  const cmax=Math.max(...cats.map(c=>c[1]));
+  document.getElementById('catBars').innerHTML=cats.map(c=>
+    `<div class="hbar-row"><span class="hbar-name">${c[0]}</span>
+     <div class="hbar-track solid"><div style="width:${(c[1]/cmax*100).toFixed(1)}%;background:var(--el-primary)"></div></div>
+     <span class="hbar-val">${c[1]} 个</span></div>`).join("");
+
+  // TOP 智能体
+  const tops=[["锡锡导员-全校",986],["全校数据查询（领导版）",412],["制度政策 Agent",358],["智能问数",270],["AI科普助手",154]];
+  const tmax=Math.max(...tops.map(t=>t[1]));
+  document.getElementById('topAgents').innerHTML=tops.map(t=>
+    `<div class="hbar-row"><span class="hbar-name">${t[0]}</span>
+     <div class="hbar-track solid"><div style="width:${(t[1]/tmax*100).toFixed(1)}%;background:var(--p-secondary)"></div></div>
+     <span class="hbar-val">${t[1].toLocaleString()} 次</span></div>`).join("");
+}
+
+/* ===================== 智能体管理 ===================== */
+const CAT_NAMES=["锡锡导员","学生管理","教师工作","教务教学","科研管理","后勤管理","其他特色","制度建设"];
+const CAT_ICONS={"锡锡导员":"🎓","学生管理":"🧑‍🎓","教师工作":"👩‍🏫","教务教学":"📚","科研管理":"🔬","后勤管理":"🛠","其他特色":"✨","制度建设":"📋"};
+let AGENTS=[
+  {id:1,icon:"🎓",name:"锡锡导员-全校",cat:"锡锡导员",desc:"校领导视角的全校数据查询智能体（全校MCP）",rec:true,on:true},
+  {id:2,icon:"📋",name:"制度政策 Agent",cat:"制度建设",desc:"学校规章制度与政策文件问答",rec:true,on:true},
+  {id:3,icon:"📊",name:"全校数据查询（领导版）",cat:"其他特色",desc:"全校学生/教师/科研/教学统计查询",rec:true,on:true},
+  {id:4,icon:"🔍",name:"智能问数",cat:"教务教学",desc:"自然语言查询业务数据（DataEase 驱动）",rec:true,on:true},
+  {id:5,icon:"🔧",name:"机械学院-锡锡",cat:"学生管理",desc:"机械工程学院专属 AI 辅导员",rec:false,on:true},
+  {id:6,icon:"🎛",name:"控制学院-锡锡",cat:"学生管理",desc:"控制技术学院专属 AI 辅导员",rec:false,on:true},
+  {id:7,icon:"🧪",name:"AI科普助手",cat:"其他特色",desc:"人工智能科普与校园 AI 应用介绍",rec:false,on:true},
+  {id:8,icon:"🏗",name:"数智化校园规划",cat:"其他特色",desc:"数智化校园建设规划展示",rec:false,on:false},
+  {id:9,icon:"🛠",name:"后勤报修助手",cat:"后勤管理",desc:"宿舍与教室报修指引",rec:false,on:false},
+  {id:10,icon:"👩‍🏫",name:"教师科研查询",cat:"教师工作",desc:"教师个人科研业绩查询",rec:false,on:true}
+];
+let agFilters={cat:"",stat:"",q:""};
+let editingAgent=null;
+function renderAgents(){
+  const rows=AGENTS.filter(a=>
+    (!agFilters.cat||a.cat===agFilters.cat)&&
+    (!agFilters.stat||(agFilters.stat==="1")===a.on)&&
+    (!agFilters.q||a.name.includes(agFilters.q)||a.desc.includes(agFilters.q)));
+  document.getElementById('agBody').innerHTML=rows.map(a=>`<tr>
+    <td class="num">${a.id}</td>
+    <td><span class="ag-ic">${a.icon||"✦"}</span></td>
+    <td style="color:var(--aink);font-weight:500">${a.name}</td>
+    <td><span class="tag blue">${a.cat}</span></td>
+    <td class="ev" style="white-space:normal;max-width:280px">${a.desc}</td>
+    <td><span class="sw ${a.rec?'on':''}" data-agrec="${a.id}"></span></td>
+    <td>${a.on?'<span class="tag ok">启用</span>':'<span class="tag off">停用</span>'}</td>
+    <td><span class="link" onclick="openAgentModal(${a.id})">编辑</span><span class="link danger" onclick="delAgent(${a.id})">删除</span></td>
+  </tr>`).join("");
+  document.getElementById('agFoot').textContent=`共 ${rows.length} / 55 个智能体`;
+}
+function bindAgentFilters(){
+  const cs=document.getElementById('agCat');
+  CAT_NAMES.forEach(c=>{const o=document.createElement('option');o.textContent=c;cs.appendChild(o);});
+  cs.onchange=()=>{agFilters.cat=cs.value;renderAgents();};
+  document.getElementById('agStat').onchange=e=>{agFilters.stat=e.target.value;renderAgents();};
+  document.getElementById('agQ').oninput=e=>{agFilters.q=e.target.value.trim();renderAgents();};
+  document.getElementById('agReset').onclick=()=>{
+    agFilters={cat:"",stat:"",q:""};cs.value="";document.getElementById('agStat').value="";document.getElementById('agQ').value="";
+    renderAgents();toast("筛选已重置");
+  };
+}
+document.addEventListener('click',e=>{
+  const sw=e.target.closest('[data-agrec]');
+  if(sw){const a=AGENTS.find(x=>x.id==sw.dataset.agrec);if(a)a.rec=sw.classList.contains('on');}
+});
+function openAgentModal(id){
+  editingAgent=id?AGENTS.find(a=>a.id===id):null;
+  document.getElementById('amTitle').textContent=id?"编辑智能体":"新增智能体";
+  const sel=document.getElementById('amCat');
+  sel.innerHTML=CAT_NAMES.map(c=>`<option>${c}</option>`).join("");
+  const a=editingAgent;
+  document.getElementById('amName').value=a?a.name:"";
+  document.getElementById('amIcon').value=a?a.icon:"";
+  if(a)sel.value=a.cat;
+  document.getElementById('amDesc').value=a?a.desc:"";
+  document.getElementById('amDetail').value=a?a.desc+"。进入智能体页时展示详细介绍。":"";
+  document.getElementById('amUrl').value=a&&a.id===9?"":"";
+  document.getElementById('amTags').value=a?a.cat+", 校园, 管理":"";
+  document.getElementById('amRec').classList.toggle('on',a?!!a.rec:true);
+  document.getElementById('amEnable').classList.toggle('on',a?!!a.on:true);
+  document.getElementById('amSort').value=a?a.id*10:600;
+  document.getElementById('agentModal').classList.add('show');
+  document.getElementById('mask').classList.add('show');
+}
+function closeAgentModal(){
+  document.getElementById('agentModal').classList.remove('show');
+  document.getElementById('mask').classList.remove('show');
+}
+document.getElementById('btnAddAgent').onclick=()=>openAgentModal(null);
+document.getElementById('amClose').onclick=closeAgentModal;
+document.getElementById('amCancel').onclick=closeAgentModal;
+document.getElementById('mask').onclick=closeAgentModal;
+document.getElementById('amRec').onclick=function(){this.classList.toggle('on');};
+document.getElementById('amEnable').onclick=function(){this.classList.toggle('on');};
+document.getElementById('amSave').onclick=()=>{
+  const name=document.getElementById('amName').value.trim();
+  if(!name){toast("名称为必填项");return;}
+  if(editingAgent){
+    editingAgent.name=name;
+    editingAgent.icon=document.getElementById('amIcon').value.trim();
+    editingAgent.cat=document.getElementById('amCat').value;
+    editingAgent.desc=document.getElementById('amDesc').value.trim();
+    editingAgent.rec=document.getElementById('amRec').classList.contains('on');
+    editingAgent.on=document.getElementById('amEnable').classList.contains('on');
+    renderAgents();toast(`已保存「${name}」（演示数据）`);
+  }else{
+    AGENTS.unshift({id:Math.max(...AGENTS.map(a=>a.id))+1,icon:document.getElementById('amIcon').value.trim()||"✦",
+      name,cat:document.getElementById('amCat').value,desc:document.getElementById('amDesc').value.trim()||"（暂无描述）",
+      rec:document.getElementById('amRec').classList.contains('on'),on:document.getElementById('amEnable').classList.contains('on')});
+    renderAgents();toast(`已新增「${name}」（演示数据）`);
+  }
+  closeAgentModal();
+};
+function delAgent(id){
+  const a=AGENTS.find(x=>x.id===id);
+  if(confirm(`确认删除智能体「${a.name}」？删除后卡片从广场即时消失，不可恢复。`)){
+    AGENTS=AGENTS.filter(x=>x.id!==id);renderAgents();toast("已删除（演示数据）");
+  }
+}
+
+/* ===================== 分类管理 ===================== */
+let CATS=[
+  {icon:"🎓",name:"锡锡导员",sort:10,n:12,on:true},
+  {icon:"🧑‍🎓",name:"学生管理",sort:20,n:18,on:true},
+  {icon:"👩‍🏫",name:"教师工作",sort:30,n:6,on:true},
+  {icon:"📚",name:"教务教学",sort:40,n:5,on:true},
+  {icon:"🔬",name:"科研管理",sort:50,n:4,on:true},
+  {icon:"🛠",name:"后勤管理",sort:60,n:3,on:true},
+  {icon:"✨",name:"其他特色",sort:70,n:5,on:true},
+  {icon:"📋",name:"制度建设",sort:80,n:2,on:true}
+];
+function renderCats(){
+  document.getElementById('catBody').innerHTML=CATS.map((c,i)=>`<tr>
+    <td><span class="ag-ic">${c.icon}</span></td>
+    <td style="color:var(--aink);font-weight:500">${c.name}</td>
+    <td class="num" style="text-align:right">${c.sort}</td>
+    <td class="num" style="text-align:right">${c.n}</td>
+    <td><span class="sw ${c.on?'on':''}" data-cat="${i}"></span></td>
+    <td><span class="link" onclick="toast('编辑分类（演示）')">编辑</span><span class="link danger" onclick="delCat(${i})">删除</span></td>
+  </tr>`).join("");
+}
+document.addEventListener('click',e=>{
+  const sw=e.target.closest('[data-cat]');
+  if(sw){CATS[+sw.dataset.cat].on=sw.classList.contains('on');}
+});
+function delCat(i){
+  const c=CATS[i];
+  if(c.n>0){toast(`「${c.name}」下仍有 ${c.n} 个智能体，请先移走或删除`);return;}
+  if(confirm(`确认删除分类「${c.name}」？`)){CATS.splice(i,1);renderCats();toast("已删除（演示数据）");}
+}
+
+/* ===================== 模型管理 ===================== */
+const MODELS=[
+  ["deepseek-v4-flash","DeepSeek","对话","默认对话模型，速度快",10],
+  ["deepseek-v4","DeepSeek","推理","深度推理模型，复杂任务",20],
+  ["qwen-max","通义千问","对话","阿里旗舰模型",30],
+  ["qwen-plus","通义千问","对话","均衡性能与成本",40],
+  ["qwen-turbo","通义千问","对话","高速低成本",50],
+  ["glm-4-plus","智谱 GLM","对话","智谱旗舰模型",60],
+  ["glm-4-flash","智谱 GLM","对话","免费高速模型",70],
+  ["ernie-4.0","文心一言","对话","百度旗舰模型",80],
+  ["spark-v4","讯飞星火","对话","讯飞旗舰模型",90],
+  ["kimi-long","Kimi","长文本","超长上下文",100],
+  ["edge-tts-xiaoxiao","EdgeTTS","语音","语音合成（晓晓音色）",110],
+  ["sensevoice","FunASR","语音","语音识别",120]
+];
+function renderModels(){
+  document.getElementById('mdlBody').innerHTML=MODELS.map((m,i)=>`<tr>
+    <td class="mono" style="color:var(--aink);font-weight:500">${m[0]}</td>
+    <td>${m[1]}</td>
+    <td><span class="tag ${m[2]==='对话'?'blue':m[2]==='语音'?'watch':'mid'}">${m[2]}</span></td>
+    <td class="ev">${m[3]}</td>
+    <td class="num" style="text-align:right">${m[4]}</td>
+    <td>${i%7===6?'<span class="tag off">停用</span>':'<span class="tag ok">启用</span>'}</td>
+    <td><span class="link" onclick="toast('编辑模型（演示）')">编辑</span><span class="link danger" onclick="toast('删除模型（演示）')">删除</span></td>
+  </tr>`).join("");
+}
+
+/* ===================== 用户管理 ===================== */
+const USERS=[
+  {id:1,un:"admin",nick:"平台管理员",role:"管理员",src:"内置",on:true,ct:"2026-03-01"},
+  {id:2,un:"2013070823",nick:"张小艾",role:"管理员",src:"CAS",on:true,ct:"2026-04-12"},
+  {id:3,un:"2004060551",nick:"乔巍",role:"管理员",src:"CAS",on:true,ct:"2026-04-20"},
+  {id:4,un:"wangxue",nick:"王雪",role:"运营",src:"账密",on:true,ct:"2026-05-08"},
+  {id:5,un:"liqiang",nick:"李强",role:"运营",src:"账密",on:true,ct:"2026-06-15"},
+  {id:6,un:"zhaomin",nick:"赵敏",role:"运营",src:"账密",on:true,ct:"2026-07-02"},
+  {id:7,un:"chenchen",nick:"陈晨",role:"运营",src:"账密",on:false,ct:"2026-08-11"},
+  {id:8,un:"liuyang",nick:"刘洋",role:"运营",src:"CAS",on:true,ct:"2026-09-19"},
+  {id:9,un:"sunjie",nick:"孙洁",role:"运营",src:"账密",on:false,ct:"2026-10-06"}
+];
+function renderUsers(){
+  document.getElementById('usrBody').innerHTML=USERS.map(u=>`<tr>
+    <td class="num">${u.id}</td>
+    <td class="mono">${u.un}</td>
+    <td style="color:var(--aink);font-weight:500">${u.nick}</td>
+    <td>${u.role==="管理员"?'<span class="tag blue">管理员</span>':'<span class="tag watch">运营</span>'}</td>
+    <td class="ev">${u.src}</td>
+    <td>${u.on?'<span class="tag ok">启用</span>':'<span class="tag off">禁用</span>'}</td>
+    <td class="num ev">${u.ct}</td>
+    <td><span class="link" onclick="toast('编辑用户（演示）')">编辑</span><span class="link" onclick="toggleUser(${u.id})">${u.on?'禁用':'启用'}</span><span class="link" onclick="toast('已重置密码，请第一时间通知用户（演示）')">重置密码</span></td>
+  </tr>`).join("");
+}
+function toggleUser(id){
+  const u=USERS.find(x=>x.id===id);u.on=!u.on;renderUsers();
+  toast(u.on?`已启用「${u.nick}」`:`已禁用「${u.nick}」，该用户无法登录后台`);
+}
+
+/* ===================== 锡锡跳转 / 大模型配置 ===================== */
+const PROVS=[
+  {name:"DeepSeek",ic:"🐋",live:true,model:"deepseek-v4-flash",url:"https://api.deepseek.com/v1",temp:"0.7",tokens:"4096"},
+  {name:"通义千问",ic:"☁",live:false,model:"qwen-max",url:"https://dashscope.aliyuncs.com/compatible-mode/v1",temp:"0.7",tokens:"8192"},
+  {name:"智谱 GLM",ic:"✳",live:false,model:"glm-4-plus",url:"https://open.bigmodel.cn/api/paas/v4",temp:"0.6",tokens:"4096"}
+];
+let curProv=0;
+function renderProvs(){
+  document.getElementById('provList').innerHTML=PROVS.map((p,i)=>`
+    <div class="prov-item ${i===curProv?'on':''}" onclick="selProv(${i})">
+      <span class="pv-ic">${p.ic}</span>${p.name}${p.live?'<span class="live">当前生效</span>':''}
+    </div>`).join("")+`<div class="prov-add" onclick="toast('添加自定义供应商（演示）')">＋ 添加自定义供应商</div>`;
+  const p=PROVS[curProv];
+  document.getElementById('llmTitle').textContent=p.name;
+  document.getElementById('llmSub').textContent=(p.live?"当前生效供应商 · ":"备用供应商 · ")+"切换将影响全平台对话效果";
+  const rows=document.querySelectorAll('#pv-llm .kv-row');
+  rows[0].querySelector('input').value=p.name;
+  rows[1].querySelector('input').value=p.url;
+  rows[3].querySelector('input').value=p.model;
+  rows[4].querySelector('input').value=p.temp;
+  rows[5].querySelector('input').value=p.tokens;
+}
+function selProv(i){curProv=i;renderProvs();toast(`已选中「${PROVS[i].name}」（演示）`);}
+
+/* ===================== 文件管理 ==================== */
+let FILES=[
+  ["xixi-mascot.png","图片","824 KB","张小艾","2026-11-18","智能体配图"],
+  ["wxit-logo-white.svg","图片","12 KB","张小艾","2026-11-18","登录页/页脚"],
+  ["操作手册_AI中台.pdf","文档","9.1 MB","张小艾","2026-10-25","—"],
+  ["agent-cover-jixie.png","图片","356 KB","乔巍","2026-11-02","智能体配图"],
+  ["campus-planning-guide.pdf","文档","2.4 MB","admin","2026-09-14","数智化校园规划"],
+  ["zhidu-index.json","数据","486 KB","张小艾","2026-10-08","制度政策 Agent"],
+  ["faq-2026fall.xlsx","文档","88 KB","王雪","2026-09-30","—"],
+  ["brochure-competition.pdf","文档","6.8 MB","张小艾","2026-10-30","—"]
+];
+function renderFiles(){
+  document.getElementById('fileBody').innerHTML=FILES.map((f,i)=>`<tr>
+    <td class="mono" style="color:var(--aink)">${f[0]}</td>
+    <td><span class="tag ${f[1]==='图片'?'watch':f[1]==='数据'?'mid':'blue'}">${f[1]}</span></td>
+    <td class="num" style="text-align:right">${f[2]}</td>
+    <td>${f[3]}</td>
+    <td class="num ev">${f[4]}</td>
+    <td class="ev">${f[5]}</td>
+    <td><span class="link" onclick="toast('预览（演示）')">预览</span><span class="link" onclick="toast('下载（演示）')">下载</span><span class="link danger" onclick="delFile(${i})">删除</span></td>
+  </tr>`).join("");
+  document.getElementById('fileFoot').textContent=`共 ${FILES.length} 个文件 · 上限 10 MB · 类型白名单见基础配置`;
+}
+function delFile(i){
+  if(FILES[i][5]!=="—"){toast(`「${FILES[i][0]}」正在被引用（${FILES[i][5]}），删除前请先确认`);return;}
+  if(confirm(`确认删除「${FILES[i][0]}」？`)){FILES.splice(i,1);renderFiles();toast("已删除（演示数据）");}
+}
+
+/* ===================== 操作日志 ==================== */
+const LOGS=[
+  ["2026-11-20 16:02","张小艾","智能体管理","编辑智能体「锡锡导员-全校」：更新描述与推荐状态"],
+  ["2026-11-20 10:14","张小艾","精准资助分析","导出线索名单（近30天窗口，共 187 条）"],
+  ["2026-11-19 15:48","admin","大模型配置","切换默认供应商：通义千问 → DeepSeek（deepseek-v4-flash）"],
+  ["2026-11-19 09:21","乔巍","用户管理","重置用户「陈晨」密码"],
+  ["2026-11-18 14:05","张小艾","基础配置","修改 site_footer 为「无锡职业技术大学 · 信息中心」"],
+  ["2026-11-17 11:26","admin","分类管理","新增分类「制度建设」"],
+  ["2026-11-16 17:44","乔巍","智能体管理","新增智能体「教师科研查询」"],
+  ["2026-11-15 10:08","张小艾","智能体管理","停用智能体「后勤报修助手」"],
+  ["2026-11-14 15:32","admin","用户管理","禁用用户「孙洁」"],
+  ["2026-11-13 09:55","张小艾","文件管理","上传文件「xixi-mascot.png」"]
+];
+function renderLogs(){
+  const u=document.getElementById('logUser').value,m=document.getElementById('logMod').value;
+  const rows=LOGS.filter(l=>(!u||l[1]===u)&&(!m||l[2]===m));
+  document.getElementById('logBody').innerHTML=rows.map(l=>`<tr>
+    <td class="num ev">${l[0]}</td>
+    <td style="color:var(--aink);font-weight:500">${l[1]}</td>
+    <td><span class="tag blue">${l[2]}</span></td>
+    <td style="white-space:normal">${l[3]}</td>
+  </tr>`).join("");
+  document.getElementById('logFoot').textContent=`共 ${rows.length} 条记录（近 7 日）`;
+}
+document.getElementById('logUser').onchange=renderLogs;
+document.getElementById('logMod').onchange=renderLogs;
+
+/* ===================== 精准资助分析（沿用原原型） ===================== */
+const COLLEGES=["机械","控制","物联网","汽车","财经","管理","文旅","设计","人工智能","集成电路","国际教育"];
+const DIST=[
+  {n:"机械",hi:26,mid:58,watch:110},{n:"控制",hi:19,mid:44,watch:90},
+  {n:"物联网",hi:23,mid:51,watch:98},{n:"汽车",hi:17,mid:39,watch:83},
+  {n:"财经",hi:16,mid:35,watch:76},{n:"管理",hi:15,mid:33,watch:73},
+  {n:"文旅",hi:14,mid:31,watch:69},{n:"设计",hi:18,mid:41,watch:87},
+  {n:"人工智能",hi:20,mid:46,watch:96},{n:"集成电路",hi:12,mid:27,watch:66},
+  {n:"国际教育",hi:7,mid:16,watch:44}
+];
+const WIN={
+  14:{active:7862,eligible:6215,range:"11-06 ~ 11-19"},
+  30:{active:11247,eligible:9863,range:"10-21 ~ 11-19"},
+  60:{active:12908,eligible:11032,range:"09-22 ~ 11-19"},
+  90:{active:13415,eligible:11690,range:"08-23 ~ 11-19"}
+};
+const sum=(a,k)=>a.reduce((s,x)=>s+x[k],0);
+WIN[30].hi=sum(DIST,'hi'); WIN[30].mid=sum(DIST,'mid'); WIN[30].watch=sum(DIST,'watch');
+WIN[14].hi=Math.round(WIN[30].hi*.52); WIN[14].mid=Math.round(WIN[30].mid*.54); WIN[14].watch=Math.round(WIN[30].watch*.57);
+WIN[60].hi=Math.round(WIN[30].hi*1.32); WIN[60].mid=Math.round(WIN[30].mid*1.28); WIN[60].watch=Math.round(WIN[30].watch*1.21);
+WIN[90].hi=Math.round(WIN[30].hi*1.50); WIN[90].mid=Math.round(WIN[30].mid*1.41); WIN[90].watch=Math.round(WIN[30].watch*1.32);
+
+const NAMES=["王雨桐","李志远","张梦琪","刘思远","陈嘉禾","杨静怡","赵文博","周雅婷","吴俊熙","徐若涵",
+  "孙浩然","马晓芸","朱天佑","胡欣然","郭明轩","何佳妮","高子墨","罗一鸣","郑舒扬","梁咏诗",
+  "宋景行","唐雨泽","许安然","韩沐辰","冯芷晴","邓子谦","曹忆南","彭启铭","曾令仪","肖云帆",
+  "田雨欣","董思成","袁梦洁","蔡文静","蒋宇轩","余沐阳","杜若曦","魏承泽","吕明远","丁一诺"];
+const GRADES=["2026级","2025级","2024级","2023级"];
+const EVI=[
+  {t:"顿数达标 · 均价P6 · 晚间就餐占比高",ev:["就餐频次 P82","单顿均价 P6","超市占比 P18"]},
+  {t:"顿数达标 · 均价P9 · 假期留校就餐连续",ev:["就餐频次 P88","单顿均价 P9","超市占比 P12"]},
+  {t:"顿数达标 · 均价P4 · 早午餐为主",ev:["就餐频次 P76","单顿均价 P4","超市占比 P8"]},
+  {t:"顿数达标 · 均价P11 · 消费结构稳定",ev:["就餐频次 P90","单顿均价 P11","超市占比 P22"]},
+  {t:"顿数达标 · 均价P7 · 周末就餐不间断",ev:["就餐频次 P85","单顿均价 P7","超市占比 P15"]}
+];
+const CCODE={"机械":"30","控制":"31","物联网":"32","汽车":"33","财经":"34","管理":"35","文旅":"36","设计":"37","人工智能":"38","集成电路":"39","国际教育":"50"};
+const STUDENTS=[];
+for(let i=0;i<40;i++){
+  const c=DIST[i%DIST.length].n, g=GRADES[(i*7)%4];
+  const lvl=i%9===0?"hi":(i%3===0?"mid":"watch");
+  const hi=lvl==="hi", mid=lvl==="mid";
+  const meals=hi?52+(i*3)%38:mid?46+(i*5)%40:42+(i*7)%44;
+  const price=hi?4.1+(i%8)*.12:mid?5.2+(i%9)*.14:6.3+(i%11)*.16;
+  const spend=Math.round(meals*price);
+  const pct=hi?3+(i%9):mid?8+(i%8):12+(i%10);
+  const seq=String(1000+((i*137)%9000)).padStart(4,"0")+String((i*7)%10)+String((i*13)%10);
+  STUDENTS.push({
+    id:CCODE[c]+g.slice(2,4)+seq,
+    name:NAMES[i%NAMES.length], college:c, grade:g, level:lvl,
+    meals, price:Math.round(price*10)/10, spend, pct,
+    evi:EVI[i%EVI.length]
+  });
+}
+
+let curWin=30;
+function renderKPI(){
+  const w=WIN[curWin];
+  const items=[
+    {lb:"观察窗",vl:curWin+"<small>天</small>",cmp:w.range,cls:"",bar:"var(--p-t4)"},
+    {lb:"活跃消费人数",vl:w.active.toLocaleString(),cmp:"在校生 15,124",cls:"",bar:"var(--p-t4)"},
+    {lb:"就餐达标人数",vl:w.eligible.toLocaleString()+"<small>人</small>",cmp:"月食堂就餐 ≥40 顿",cls:"",bar:"var(--p-success)"},
+    {lb:"高关注线索",vl:w.hi+"<small>人</small>",cmp:"多信号低位 · 建议优先复核",cls:"k-hi",bar:"var(--abad)"},
+    {lb:"中关注线索",vl:w.mid+"<small>人</small>",cmp:"建议纳入观察",cls:"k-mid",bar:"#FBBF24"},
+    {lb:"观察线索",vl:w.watch+"<small>人</small>",cmp:"低置信 · 仅供参考",cls:"k-watch",bar:"var(--p-secondary)"}
+  ];
+  document.getElementById("kpiRow").innerHTML=items.map(k=>
+    `<div class="kpi ${k.cls}"><span class="bar" style="background:${k.bar}"></span>
+     <div class="lb">${k.lb}</div><div class="vl">${k.vl}</div><div class="cmp">${k.cmp}</div></div>`).join("");
+}
+function renderCollege(){
+  const max=Math.max(...DIST.map(d=>d.hi+d.mid+d.watch));
+  document.getElementById("collegeBars").innerHTML=DIST.map(d=>{
+    const t=d.hi+d.mid+d.watch;
+    return `<div class="hbar-row"><span class="hbar-name">${d.n}</span>
+      <div class="hbar-track" title="${d.n}：高${d.hi} / 中${d.mid} / 观察${d.watch}，共${t}人">
+        <div style="width:${d.hi/max*100}%;background:var(--abad)"></div>
+        <div style="width:${d.mid/max*100}%;background:#FBBF24"></div>
+        <div style="width:${d.watch/max*100}%;background:var(--p-secondary)"></div>
+      </div><span class="hbar-val">${t} 人</span></div>`;
+  }).join("");
+}
+function renderHist(){
+  const bins=new Array(20).fill(0);
+  STUDENTS.forEach(s=>bins[Math.min(19,Math.floor(s.pct/5))]++);
+  const base=[420,510,580,640,690,720,730,716,680,640,595,545,490,430,370,310,250,190,130,80];
+  const data=base.map((b,i)=>b+(bins[i]*3));
+  const max=Math.max(...data);
+  const W=430,H=210,pad=6,bw=(W-2*pad)/20;
+  let bars=data.map((v,i)=>{
+    const h=v/max*(H-38), x=pad+i*bw, y=H-26-h;
+    const low=i<3;
+    return `<rect x="${(x+.8).toFixed(1)}" y="${y.toFixed(1)}" width="${(bw-1.6).toFixed(1)}" height="${h.toFixed(1)}" rx="2"
+      fill="${low?'var(--p-primary)':'#CBD5E1'}" opacity="${low?1:.75}"><title>P${i*5}~P${i*5+5}：${v} 人</title></rect>`;
+  }).join("");
+  const px=pad+3*bw;
+  const labels=[0,5,10,15,20,30,40,50,60,70,80,90,100].map(p=>{
+    const x=pad+p/100*(W-2*pad);
+    return `<text x="${x.toFixed(1)}" y="${H-8}" font-size="9.5" fill="#94A3B8" text-anchor="middle">${p}</text>`;
+  }).join("");
+  document.getElementById("histChart").innerHTML=
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;margin-top:14px">
+      ${bars}
+      <line x1="${px}" y1="4" x2="${px}" y2="${H-26}" stroke="var(--p-accent)" stroke-width="1.4" stroke-dasharray="4 3"/>
+      <text x="${px+5}" y="12" font-size="10" fill="var(--p-accent)" font-weight="600">P15 阈值</text>
+      ${labels}
+    </svg>
+    <div style="font-size:11px;color:var(--p-t4);text-align:right;margin-top:2px">横轴：同学院同年级消费分位（越低越省）· 纵轴：人数</div>`;
+}
+const LVL={hi:["高关注","hi"],mid:["中关注","mid"],watch:["观察","watch"]};
+let filters={college:"",grade:"",level:"",q:""};
+function filtered(){
+  return STUDENTS.filter(s=>
+    (!filters.college||s.college===filters.college)&&
+    (!filters.grade||s.grade===filters.grade)&&
+    (!filters.level||s.level===filters.level)&&
+    (!filters.q||s.id.includes(filters.q)||s.name.includes(filters.q)));
+}
+function renderTable(){
+  const rows=filtered();
+  document.getElementById("tbody").innerHTML=rows.map(s=>`<tr>
+    <td class="num">${s.id}</td><td>${s.name}</td><td>${s.college}</td><td>${s.grade}</td>
+    <td><span class="tag ${LVL[s.level][1]}">${LVL[s.level][0]}</span></td>
+    <td class="num" style="text-align:right">${s.meals}</td>
+    <td class="num" style="text-align:right">${s.price.toFixed(1)}</td>
+    <td class="num" style="text-align:right">${s.spend}</td>
+    <td class="num" style="text-align:right"><b style="color:${s.level==='hi'?'var(--abad)':s.level==='mid'?'#D97706':'var(--p-primary)'}">P${s.pct}</b></td>
+    <td class="ev">${s.evi.t}</td>
+    <td><span class="link" onclick="openDetail('${s.id}')">详情</span></td>
+  </tr>`).join("");
+  document.getElementById("footInfo").textContent=`共 ${rows.length} 条线索 · 当前筛选：${filters.college||"全部学院"} / ${filters.grade||"全部年级"} / ${filters.level?LVL[filters.level][0]:"全部档位"}`;
+  document.getElementById("pager").innerHTML=
+    `<button disabled>‹</button><button class="on">1</button><button>2</button><button>›</button>`;
+}
+function bindFilters(){
+  const cs=document.getElementById("fCollege");
+  COLLEGES.forEach(c=>{const o=document.createElement("option");o.textContent=c;cs.appendChild(o);});
+  cs.onchange=()=>{filters.college=cs.value;renderTable();};
+  document.getElementById("fGrade").onchange=e=>{filters.grade=e.target.value;renderTable();};
+  document.getElementById("fLevel").onchange=e=>{filters.level=e.target.value;renderTable();};
+  document.getElementById("fSearch").oninput=e=>{filters.q=e.target.value.trim();renderTable();};
+  document.getElementById("btnReset").onclick=()=>{
+    filters={college:"",grade:"",level:"",q:""};
+    cs.value="";document.getElementById("fGrade").value="";
+    document.getElementById("fLevel").value="";document.getElementById("fSearch").value="";
+    renderTable();toast("筛选已重置");
+  };
+}
+document.getElementById("winSeg").addEventListener("click",e=>{
+  if(e.target.tagName!=="BUTTON")return;
+  document.querySelectorAll("#winSeg button").forEach(b=>b.classList.remove("on"));
+  e.target.classList.add("on");curWin=+e.target.dataset.w;renderKPI();
+  toast(`已切换观察窗：${e.target.textContent}（${WIN[curWin].range}）`);
+});
+document.getElementById("btnExport").onclick=()=>{
+  const rows=filtered();
+  const head=["学号","姓名","学院","年级","档位","月就餐(顿)","单顿均价(元)","月食堂支出(元)","消费分位","信号证据"];
+  const csv=["\uFEFF# 精准资助分析 · 线索名单（V2 预览 · 示例数据）","# 观察窗:"+WIN[curWin].range+" · 导出时间:"+new Date().toLocaleString("zh-CN"),head.join(",")]
+    .concat(rows.map(s=>[s.id,s.name,s.college,s.grade,LVL[s.level][0],s.meals,s.price.toFixed(1),s.spend,"P"+s.pct,'"'+s.evi.t+'"'].join(","))).join("\n");
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+  a.download=`精准资助线索名单_${new Date().toISOString().slice(0,10)}.csv`;a.click();
+  toast(`已导出 ${rows.length} 条（正式版将写入审计日志）`);
+};
+function openDetail(id){
+  const s=STUDENTS.find(x=>x.id===id);if(!s)return;
+  document.getElementById("dwTitle").innerHTML=`${s.name} <span style="font-weight:400;color:var(--p-t4);font-size:13px">${s.id} · ${s.college} · ${s.grade}</span>`;
+  const wk=[86,92,88,95,90,97,93,98].map((v,j)=>v+((j*7+s.meals)%9)-4);
+  const wmax=Math.max(...wk),wmin=Math.min(...wk);
+  const pts=wk.map((v,j)=>`${(20+j*46).toFixed(0)},${(150-(v-wmin)/(wmax-wmin+.1)*110).toFixed(0)}`).join(" ");
+  document.getElementById("dwBody").innerHTML=`
+    <div style="display:flex;align-items:center;gap:9px;margin-bottom:14px">
+      <span class="tag ${LVL[s.level][1]}" style="font-size:12px;padding:3px 11px">${LVL[s.level][0]}</span>
+      <span style="font-size:12px;color:var(--p-t4)">综合消费分位 <b style="color:var(--aink)">P${s.pct}</b> · 同${s.college}${s.grade}基准</span>
+    </div>
+    <div class="dw-kpis">
+      <div class="dw-kpi"><div class="l">月就餐</div><div class="v">${s.meals}<small style="font-size:10px"> 顿</small></div></div>
+      <div class="dw-kpi"><div class="l">单顿均价</div><div class="v">${s.price.toFixed(1)}<small style="font-size:10px"> 元</small></div></div>
+      <div class="dw-kpi"><div class="l">月支出</div><div class="v">${s.spend}<small style="font-size:10px"> 元</small></div></div>
+      <div class="dw-kpi"><div class="l">消费分位</div><div class="v">P${s.pct}</div></div>
+    </div>
+    <div class="dw-sec">信号分解（百分位 = 在同学院同年级中的相对位置）</div>
+    ${s.evi.ev.map(e=>{
+      const m=e.match(/P(\d+)/);const p=+m[1];
+      const cls=p<15?"low":p<40?"mid":"ok";
+      const nm=e.split(" P")[0];
+      return `<div class="sig-row"><span class="n">${nm}</span><span class="p ${cls}">P${p}${p<15?" · 显著偏低":""}</span></div>`;
+    }).join("")}
+    <div class="dw-sec">近 8 周食堂周支出（元）</div>
+    <svg viewBox="0 0 400 170" style="width:100%">
+      <polyline points="${pts}" fill="none" stroke="var(--p-primary)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${wk.map((v,j)=>`<circle cx="${20+j*46}" cy="${(150-(v-wmin)/(wmax-wmin+.1)*110).toFixed(0)}" r="3" fill="#fff" stroke="var(--p-primary)" stroke-width="1.6"/>`).join("")}
+      ${wk.map((v,j)=>j%2===0?`<text x="${20+j*46}" y="166" font-size="9" fill="#94A3B8" text-anchor="middle">W${j+1}</text>`:"").join("")}
+    </svg>
+    <div class="dw-sec">排除项核验</div>
+    <div class="check-row"><span class="ok">✓</span>观察窗内请假离校 <b>0 天</b>（无「人不在校」干扰）</div>
+    <div class="check-row"><span class="ok">✓</span>消费数据覆盖 <b>29 / 30 天</b>（数据完整性达标）</div>
+    <div class="check-row"><span class="ok">✓</span>无大额异常消费记录（单笔 ≤ 25 元）</div>
+    <div class="dw-note">本详情为算法线索，请辅导员/资助岗通过谈心谈话、家庭情况了解等方式人工复核后，按学校资助流程处理。<b>请勿直接向学生提及「被系统识别」。</b></div>`;
+  document.getElementById("drawer").classList.add("show");
+  document.getElementById("mask").classList.add("show");
+}
+function closeDetail(){
+  document.getElementById("drawer").classList.remove("show");
+  document.getElementById("mask").classList.remove("show");
+}
+document.getElementById("dwClose").onclick=closeDetail;
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"){closeDetail();closeAgentModal();}
+});
+
+/* ===================== 初始化 ===================== */
+renderDashboard();renderAgents();bindAgentFilters();renderCats();renderModels();renderUsers();
+renderProvs();renderFiles();renderLogs();
+renderKPI();renderCollege();renderHist();bindFilters();renderTable();
+</script>
+</body>
+</html>
