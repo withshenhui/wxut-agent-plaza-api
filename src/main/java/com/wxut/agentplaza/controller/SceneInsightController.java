@@ -114,10 +114,10 @@ public class SceneInsightController {
                 "  COUNT(*) FILTER (WHERE s.state <> '6' AND s.time >= '2230') AS late" +
                 " FROM usr_gxai.t_zhsg_xskq s WHERE s.date >= ? AND s.date < ? GROUP BY s.xh)" +
                 " SELECT d.yxmc AS n," +
-                "  COUNT(*) FILTER (WHERE a.no_return >= 5 OR (a.no_return >= 3 AND a.late >= 3)) AS hi," +
-                "  COUNT(*) FILTER (WHERE a.no_return >= 3 AND a.no_return < 5) AS mid," +
-                "  COUNT(*) FILTER (WHERE a.no_return < 3 AND a.late >= 5) AS watch" +
-                " FROM agg a JOIN d ON d.xh = a.xh WHERE (a.no_return >= 1 OR a.late >= 1)" +
+                "  COUNT(*) FILTER (WHERE a.no_return >= 8) AS hi," +
+                "  COUNT(*) FILTER (WHERE a.no_return >= 3 AND a.no_return <= 7) AS mid," +
+                "  COUNT(*) FILTER (WHERE a.no_return >= 1 AND a.no_return <= 2) AS watch" +
+                " FROM agg a JOIN d ON d.xh = a.xh WHERE a.no_return >= 1" +
                 " GROUP BY d.yxmc ORDER BY d.yxmc", s, e));
     }
 
