@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS form_template (
   source VARCHAR(16) DEFAULT 'preset' COMMENT 'preset=预置 / custom=上传',
   file_type VARCHAR(8) DEFAULT '' COMMENT 'docx/xlsx/pdf',
   file_name VARCHAR(255) DEFAULT '' COMMENT '上传原文件名',
+  file_path VARCHAR(255) DEFAULT '' COMMENT '模板原文件路径（classpath:=war内预置），有值即可导出Word',
   fields_json MEDIUMTEXT COMMENT '字段定义数组 JSON',
   field_count INT DEFAULT 0 COMMENT '字段数',
   status TINYINT DEFAULT 1 COMMENT '1=启用 0=停用',
@@ -16,6 +17,9 @@ CREATE TABLE IF NOT EXISTS form_template (
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_ft_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='智能填报-模板';
+
+-- 存量表升级：补 file_path 列（幂等，重复执行报 Duplicate column 可忽略）
+ALTER TABLE form_template ADD COLUMN IF NOT EXISTS file_path VARCHAR(255) DEFAULT '' COMMENT '模板原文件路径（classpath:=war内预置），有值即可导出Word';
 
 CREATE TABLE IF NOT EXISTS form_record (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,

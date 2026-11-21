@@ -2,9 +2,14 @@ package com.wxut.agentplaza.controller;
 
 import com.wxut.agentplaza.common.PageResult;
 import com.wxut.agentplaza.common.Result;
+import com.wxut.agentplaza.entity.FormRecord;
+import com.wxut.agentplaza.entity.SysOperationLog;
 import com.wxut.agentplaza.entity.SysUser;
+import com.wxut.agentplaza.mapper.FormRecordMapper;
 import com.wxut.agentplaza.mapper.SysUserMapper;
+import com.wxut.agentplaza.service.SysOperationLogService;
 import com.wxut.agentplaza.service.form.FormAgentService;
+import com.wxut.agentplaza.service.form.FormExportService;
 import com.wxut.agentplaza.service.form.FormFillService;
 import com.wxut.agentplaza.service.form.FormWarehouseService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,11 +22,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import javax.servlet.http.HttpServletResponse;
 import java.util.List;
 import java.util.Map;
 
 /**
- * 智能填报：模板库 / 教师检索 / 填报记录 / SSE 填写流水线。
+ * 智能填报：模板库 / 教师检索 / 填报记录 / SSE 填写流水线 / 原模板导出。
  * 普通接口走 JWT 鉴权（SecurityConfig anyRequest 已覆盖）；
  * SSE 用 EventSource 无法带 Authorization 头，token 走 ?token= 查询参数（见 JwtAuthenticationFilter）。
  */
@@ -34,6 +40,9 @@ public class FormAgentController {
     private final FormAgentService agentService;
     private final FormFillService fillService;
     private final FormWarehouseService warehouseService;
+    private final FormExportService exportService;
+    private final SysOperationLogService logService;
+    private final FormRecordMapper recordMapper;
     private final SysUserMapper userMapper;
 
     // ================= 当前用户 =================
@@ -139,18 +148,33 @@ public class FormAgentController {
         return Result.success(r);
     }
 
+    /** 记录归属校验：本人或管理员 */
+    private void assertOwner(FormRecord r, Authentication auth) {
+        if (r == null) throw new IllegalArgumentException("记录不存在");
+        if (isAdmin(auth)) return;
+        if (!usernameOf(auth).equals(r.getCreatedBy())) throw new IllegalArgumentException("无权操作他人记录");
+    }
+
     @PostMapping("/records")
-    @Operation(summary = "新建填报记录（进入 AI 填写）")
+    @Operation(summary = "新建填报记录（进入 AI 填写；填报主体=登录者本人）")
     public Result<Long> createRecord(@RequestBody Map<String, Object> body, Authentication auth) {
         try {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> fields = (List<Map<String, Object>>) body.get("fields");
+            SysUser u = null;
+            try {
+                u = userMapper.selectById((Long) auth.getPrincipal());
+            } catch (Exception ignore) {
+            }
+            if (u == null) return Result.error(401, "请先登录");
             Long id = agentService.createRecord(
                     body.get("name") == null ? null : String.valueOf(body.get("name")),
                     Long.valueOf(String.valueOf(body.get("templateId"))),
-                    body.get("teacherName") == null ? "" : String.valueOf(body.get("teacherName")),
-                    body.get("teacherId") == null ? "" : String.valueOf(body.get("teacherId")),
-                    fields, usernameOf(auth));
+                    u.getNickname() == null || u.getNickname().isEmpty() ? u.getUsername() : u.getNickname(),
+                    u.getUsername(), // 工号=登录账号，仅可为本人填报
+                    fields, u.getUsername());
+            logService.save(opLog(u.getUsername(), "使用", "智能填报",
+                    "新建填报记录（本人）· 模板ID " + body.get("templateId")));
             return Result.success(id);
         } catch (IllegalArgumentException e) {
             return Result.error(400, e.getMessage());
@@ -192,5 +216,46 @@ public class FormAgentController {
     @Operation(summary = "单字段重新起草（SSE）")
     public SseEmitter regen(@PathVariable Long id, @RequestParam int index) {
         return fillService.regen(id, index);
+    }
+
+    // ================= 原模板导出 =================
+
+    @GetMapping("/records/{id}/export")
+    @Operation(summary = "导出原版式 Word（POI 原模板填充）")
+    public void export(@PathVariable Long id, Authentication auth, HttpServletResponse response) throws Exception {
+        FormRecord r = recordMapper.selectById(id);
+        assertOwner(r, auth);
+        byte[] docx = exportService.export(r);
+        if (docx == null) {
+            response.setContentType("application/json;charset=UTF-8");
+            response.setStatus(400);
+            response.getWriter().write("{\"code\":400,\"msg\":\"该模板未内置原版式文件，暂不支持导出 Word\"}");
+            return;
+        }
+        String fname = r.getName() == null ? "智能填报导出" : r.getName().replaceAll("[\\\\/:*?\"<>|\\s]+", "-");
+        String encoded;
+        try {
+            encoded = java.net.URLEncoder.encode(fname + ".docx", "UTF-8");
+        } catch (Exception e) {
+            encoded = "export.docx";
+        }
+        response.setContentType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encoded);
+        response.setContentLength(docx.length);
+        response.getOutputStream().write(docx);
+        response.getOutputStream().flush();
+        logService.save(opLog(usernameOf(auth), "导出", "智能填报",
+                "导出「" + r.getTemplateName() + "」记录 #" + r.getId() + " 原版式 Word"));
+    }
+
+    /** 操作日志构造（不落 IP 细节，保持轻量） */
+    private SysOperationLog opLog(String username, String operation, String target, String detail) {
+        SysOperationLog l = new SysOperationLog();
+        l.setUsername(username);
+        l.setOperation(operation + " · " + target);
+        l.setMethod("FORM");
+        l.setParams(detail);
+        l.setCreateTime(java.time.LocalDateTime.now());
+        return l;
     }
 }

@@ -35,29 +35,75 @@ public class FormAgentService {
     private final FormParseService parseService;
     private final ObjectMapper om = new ObjectMapper();
 
+    /** 上传模板文件的存储目录（预置实模板走 classpath:form-templates/） */
+    public static final String TEMPLATE_DIR = "/app/aicenter-form-templates";
+
     /** 启动时种子预置模板（表为空才写入，不覆盖已有） */
     public void ensureSeed() {
         try {
             Long cnt = templateMapper.selectCount(null);
-            if (cnt != null && cnt > 0) return;
-            for (Object[] p : FormFieldCatalog.presets()) {
-                FormTemplate t = new FormTemplate();
-                t.setName((String) p[0]);
-                t.setDescription(((String) p[1]) + "。 " + p[2]);
-                t.setSource("preset");
-                t.setFileType("");
-                t.setFileName("");
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> fields = (List<Map<String, Object>>) p[3];
-                t.setFieldsJson(om.writeValueAsString(fields));
-                t.setFieldCount(fields.size());
-                t.setStatus(1);
-                t.setCreatedBy("system");
-                templateMapper.insert(t);
+            if (cnt == null || cnt == 0) {
+                for (Object[] p : FormFieldCatalog.presets()) {
+                    templateMapper.insert(toTemplate(p));
+                }
+                log.info("智能填报：已种子 {} 套预置模板", FormFieldCatalog.presets().size());
             }
-            log.info("智能填报：已种子 {} 套预置模板", FormFieldCatalog.presets().size());
+            upgradeKhglPreset();
         } catch (Exception e) {
             log.error("智能填报：预置模板种子失败（不阻塞启动）: {}", e.getMessage());
+        }
+    }
+
+    private FormTemplate toTemplate(Object[] p) throws com.fasterxml.jackson.core.JsonProcessingException {
+        FormTemplate t = new FormTemplate();
+        t.setName((String) p[0]);
+        t.setDescription(((String) p[1]) + "。 " + p[2]);
+        t.setSource("preset");
+        t.setFileType("");
+        t.setFileName("");
+        if (p.length >= 7) { // 实模板：fileType/fileName/filePath
+            t.setFileType((String) p[4]);
+            t.setFileName((String) p[5]);
+            t.setFilePath((String) p[6]);
+        }
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> fields = (List<Map<String, Object>>) p[3];
+        t.setFieldsJson(om.writeValueAsString(fields));
+        t.setFieldCount(fields.size());
+        t.setStatus(1);
+        t.setCreatedBy("system");
+        return t;
+    }
+
+    /**
+     * 预置“年度考核登记表”升级为省级实模板版（幂等）：
+     * 旧版 fields_json 不含 summary1，命中即覆盖字段定义与文件信息。
+     */
+    private void upgradeKhglPreset() {
+        try {
+            List<FormTemplate> all = templateMapper.selectList(null);
+            for (FormTemplate t : all) {
+                if (!"preset".equals(t.getSource())) continue;
+                boolean isKh = t.getName() != null && t.getName().contains("年度考核登记表");
+                boolean alreadyNew = t.getFieldsJson() != null && t.getFieldsJson().contains("summary1");
+                if (isKh && !alreadyNew) {
+                    for (Object[] p : FormFieldCatalog.presets()) {
+                        if ("年度考核登记表".equals(p[0])) {
+                            FormTemplate fresh = toTemplate(p);
+                            t.setDescription(fresh.getDescription());
+                            t.setFileType(fresh.getFileType());
+                            t.setFileName(fresh.getFileName());
+                            t.setFilePath(fresh.getFilePath());
+                            t.setFieldsJson(fresh.getFieldsJson());
+                            t.setFieldCount(fresh.getFieldCount());
+                            templateMapper.updateById(t);
+                            log.info("智能填报：已将「年度考核登记表」升级为省级实模板版（可导出 Word）");
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("智能填报：考核表模板升级失败（不阻塞启动）: {}", e.getMessage());
         }
     }
 
@@ -79,6 +125,7 @@ public class FormAgentService {
             m.put("fieldCount", t.getFieldCount());
             m.put("status", t.getStatus());
             m.put("fields", parseFields(t));
+            m.put("hasFile", t.getFilePath() != null && !t.getFilePath().isEmpty());
             m.put("createdAt", fmt(t.getCreatedAt()));
             out.add(m);
         }
@@ -94,7 +141,12 @@ public class FormAgentService {
         return null;
     }
 
-    /** 上传自定义模板：解析 → 字段映射 → 入库 */
+    /** 导出用：取模板实体（含 file_path） */
+    public FormTemplate getTemplateEntity(Long id) {
+        return id == null ? null : templateMapper.selectById(id);
+    }
+
+    /** 上传自定义模板：解析 → 字段映射 → 入库（文件持久化到磁盘，供后续导出） */
     public Map<String, Object> createFromUpload(MultipartFile file, String name, String createdBy) throws Exception {
         String fileName = file.getOriginalFilename() == null ? "自定义模板" : file.getOriginalFilename();
         byte[] bytes = readAll(file);
@@ -113,6 +165,10 @@ public class FormAgentService {
         t.setFieldCount(fields.size());
         t.setStatus(1);
         t.setCreatedBy(createdBy);
+        if ("docx".equalsIgnoreCase(t.getFileType())) {
+            String path = saveTemplateFile(fileName, bytes);
+            t.setFilePath(path);
+        }
         templateMapper.insert(t);
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("id", t.getId());
@@ -127,6 +183,49 @@ public class FormAgentService {
         out.put("aiCount", ai);
         out.put("needCount", fields.size() - db - ai);
         return out;
+    }
+
+    /** 取模板原文件字节：磁盘优先，classpath: 前缀走 war 内预置资源；找不到返回 null */
+    public byte[] loadTemplateBytes(FormTemplate t) {
+        if (t == null || t.getFilePath() == null || t.getFilePath().isEmpty()) return null;
+        try {
+            if (t.getFilePath().startsWith("classpath:")) {
+                String res = t.getFilePath().substring("classpath:".length());
+                try (InputStream in = getClass().getClassLoader().getResourceAsStream(res)) {
+                    if (in == null) return null;
+                    return readAll(in);
+                }
+            }
+            java.io.File f = new java.io.File(t.getFilePath());
+            if (!f.exists()) return null;
+            try (InputStream in = new java.io.FileInputStream(f)) {
+                return readAll(in);
+            }
+        } catch (Exception e) {
+            log.warn("智能填报：读取模板文件失败 {}: {}", t.getFilePath(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** 上传模板文件落盘，返回绝对路径 */
+    private String saveTemplateFile(String fileName, byte[] bytes) throws Exception {
+        java.io.File dir = new java.io.File(TEMPLATE_DIR);
+        if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("模板目录创建失败：" + TEMPLATE_DIR);
+        String safe = System.currentTimeMillis() + "-" + fileName.replaceAll("[\\\\/:*?\"<>|\\s]", "_");
+        java.io.File out = new java.io.File(dir, safe);
+        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
+            fos.write(bytes);
+        }
+        return out.getAbsolutePath();
+    }
+
+    private static byte[] readAll(InputStream in) throws Exception {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        in.close();
+        return out.toByteArray();
     }
 
     public void updateTemplate(Long id, String name, String description, Integer status) {

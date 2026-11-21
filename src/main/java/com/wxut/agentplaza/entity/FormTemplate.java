@@ -30,6 +30,9 @@ public class FormTemplate {
 
     private String fileName;
 
+    /** 模板原文件路径（可导出 Word 的实模板）；classpath: 前缀表示 war 内预置资源 */
+    private String filePath;
+
     /** 字段定义数组 JSON */
     private String fieldsJson;
 

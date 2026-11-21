@@ -99,11 +99,46 @@ public final class FormFieldCatalog {
             F("g6", "个人述职概要", "ai", "narr1", .86, "大模型基于数仓事实起草 · 请核对后修改", null),
             F("g6", "申报理由与未来规划", "ai", "narr2", .84, "大模型基于数仓事实起草 · 请核对后修改", null));
 
+    /** 考核表实模板专用组：基本信息（与省级登记表单元格一一对应） */
+    private static final List<Def> KH_BASE = Arrays.asList(
+            F("g1", "姓名", "db", "name", .99, JZG, null),
+            F("g1", "性别", "db", "gender", .99, JZG, null),
+            F("g1", "出生年月", "db", "birth", .95, JZG, null),
+            F("g1", "民族", "db", "mz", .62, MZ, null),
+            F("g1", "政治面貌", "need", "", 0, null, "数仓未采集，请手动填写"),
+            F("g1", "文化程度", "db", "xl", .96, XL, null),
+            F("g1", "岗位类别", "need", "", 0, null, "通常为“专业技术”，请手动确认"),
+            F("g1", "岗位等级", "need", "", 0, null, "数仓未采集，请手动填写"),
+            F("g1", "岗位名称", "db", "zc", .9, JZG, null));
+
+    /** 考核表实模板专用组：德能勤绩廉素材（material=用户输入，供 AI 起草本人总结） */
+    private static final List<Def> KH_MATERIAL = Arrays.asList(
+            F("gm", "绩 · 本年度工作要点", "material", "matJi", 0, null, "必填。每行一条，AI 将逐条写入总结并归类到教学/科研/竞赛/建设等条目"),
+            F("gm", "德 · 思想政治与师德师风", "material", "matDe", 0, null, "选填。理论学习、师德建设等要点"),
+            F("gm", "能 · 业务能力提升", "material", "matNeng", 0, null, "选填。培训取证、企业实践等要点"),
+            F("gm", "勤 · 工作态度与出勤", "material", "matQin", 0, null, "选填。出勤、社会兼职等要点"),
+            F("gm", "廉 · 廉洁自律", "material", "matLian", 0, null, "选填。纪律学习、廉洁承诺等要点"),
+            F("gm", "其他补充素材", "material", "matQt", 0, null, "选填。意识形态研判、培训学时等"));
+
+    /** 考核表实模板专用组：本人总结（AI 长文本，写入“本 人 总 结”大格） */
+    private static final List<Def> KH_SUMMARY = Arrays.asList(
+            F("g6", "本 人 总 结", "ai", "summary1", .86,
+                    "大模型按“德、能、勤、绩、廉”框架，基于素材要点与数仓事实起草 1600–2000 字 · 请逐句核对", null));
+
     /** 全量目录（职称评审业绩表 = 41 项） */
     public static List<Def> full() {
         List<Def> all = new ArrayList<>();
         all.addAll(G1); all.addAll(G2); all.addAll(G3); all.addAll(G4); all.addAll(G5); all.addAll(G6);
         return all;
+    }
+
+    /** 年度考核登记表（省级实模板版）字段：9 基本信息 + 6 素材 + 1 本人总结 = 16 项 */
+    public static List<Map<String, Object>> khglFields() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (List<Def> g : Arrays.asList(KH_BASE, KH_MATERIAL, KH_SUMMARY)) {
+            for (Def d : g) out.add(d.toMap());
+        }
+        return out;
     }
 
     private static List<Map<String, Object>> defs(List<Def>... groups) {
@@ -139,13 +174,11 @@ public final class FormFieldCatalog {
                         {"外语水平", "数仓未采集，请手动填写"}, {"计算机水平", "数仓未采集，请手动填写"},
                         {"健康状况", "数仓未采集，请手动填写"}, {"兴趣特长", "数仓未采集，请手动填写"},
                         {"电子照片", "上传后随导出文件一并生成"}})});
-        // 3) 年度考核登记表 = G1(12)+G2(5)+G4(6)+G5(4)+6 项补充 = 33
-        out.add(new Object[]{"年度考核登记表", "事业单位工作人员年度考核 · 33 项字段",
-                "考核表人事口径，自动带入近三年考核结果与述职概要。",
-                defsExtra(concat(G1, concat(G2, concat(G4, G5))), "g5", new Object[][]{
-                        {"本年度出勤情况", "考勤系统数据接入中，请手动填写"}, {"奖惩情况", "请手动填写"},
-                        {"培训学时", "培训系统数据接入中，请手动填写"}, {"社会兼职", "请手动填写"},
-                        {"廉洁自律情况", "请手动填写"}, {"下一步改进计划", "可参考 AI 起草内容后修改"}})});
+        // 3) 年度考核登记表 = 省级实模板版（9 基本信息 + 6 素材 + 1 本人总结 = 16 项）
+        //    第 5/6/7 位为文件信息：fileType / fileName / filePath（classpath: 表示 war 内预置资源）
+        out.add(new Object[]{"年度考核登记表", "江苏省事业单位工作人员年度考核 · 实模板可导出 Word",
+                "基本信息数仓带出，本人总结按“德、能、勤、绩、廉”框架 AI 起草（1600–2000 字），导出原版式 Word，意见区留白线下签署。",
+                khglFields(), "docx", "khgl-blank.docx", "classpath:form-templates/khgl-blank.docx"});
         // 4) 科研业绩统计表 = G2(5)+G3(12)+评教(1)+考核(3)+述职(1)+4 项补充 = 26
         out.add(new Object[]{"科研业绩统计表", "学院科研秘书汇总 · 26 项字段",
                 "按论文、专利、项目、经费四大类汇总，支持批量生成。",
@@ -168,11 +201,16 @@ public final class FormFieldCatalog {
     static {
         GROUPS.put("g1", "基本信息"); GROUPS.put("g2", "学历学位"); GROUPS.put("g3", "科研业绩");
         GROUPS.put("g4", "教学评价"); GROUPS.put("g5", "考核与荣誉"); GROUPS.put("g6", "个人陈述");
+        GROUPS.put("gm", "总结素材");
     }
 
     /** 叙述字段的生成说明（key → 生成要求），供 LLM 与兜底文案使用 */
     public static String narrativeBrief(String key) {
         switch (key == null ? "" : key) {
+            case "summary1": return "事业单位年度考核登记表的“本 人 总 结”，1600–2000 字。"
+                    + "结构：开头一段总述本年度背景与完成情况；然后依次以“德：”“能：”“勤：”“绩：”“廉：”“其他：”分段展开"
+                    + "（德=政治学习与师德师风；能=业务能力提升；勤=工作干劲与社会兼职；绩=最详尽，先一句个人成果，再按素材逐条以（1）（2）（3）（4）分条展开教学/科研/竞赛/建设等实绩；廉=廉洁自律；其他=意识形态研判与培训等）；"
+                    + "结尾写不足与下一年展望。只使用给定素材与事实数据，素材未覆盖的部分用通用表述带过，禁止编造具体数字、荣誉或项目名。";
             case "narr1": return "个人述职概要，150-250字，涵盖教学、科研、管理工作，只使用给定事实数据";
             case "narr2": return "申报理由与未来三年规划，120-200字，围绕业绩证据链展开";
             case "res1": return "科研业绩综述，100-180字，突出结构均衡性与经费规模";

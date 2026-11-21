@@ -122,6 +122,10 @@ public class FormFillService {
                 if (!val.isEmpty()) filled++;
                 send(emitter, fieldEvent(i, f, fb));
                 Thread.sleep(60);
+            } else if ("material".equals(src)) {
+                // 素材为用户已输入内容，只回显与计数，不参与直填/生成
+                if (!str(f.get("val")).isEmpty()) filled++;
+                send(emitter, fieldEvent(i, f, fb));
             } else if ("need".equals(src)) {
                 if (!str(f.get("val")).isEmpty()) filled++;
                 send(emitter, fieldEvent(i, f, fb));
@@ -160,10 +164,12 @@ public class FormFillService {
         String key = str(f.get("key"));
         String label = str(f.get("label"));
         String brief = FormFieldCatalog.narrativeBrief(key);
-        String sys = "你是高校教师填报材料撰写助手。只依据用户提供的事实数据撰写，禁止编造任何数字、荣誉或经历；"
+        boolean isSummary = "summary1".equals(key);
+        String sys = "你是高校教师填报材料撰写助手。只依据用户提供的事实数据与素材撰写，禁止编造任何数字、荣誉或经历；"
                 + "事实数据中没有的信息直接略过，不要用“某”“若干”等占位。语言平实书面化。直接输出正文，不要输出任何前缀、标题或说明。";
         String user = "栏目：" + label + "。写作要求：" + brief + "。"
-                + "教师事实数据（JSON）：" + jsonOf(profile);
+                + "教师事实数据（JSON）：" + jsonOf(profile)
+                + (isSummary ? "\n\n教师提供的分节素材要点（优先使用，逐条落实；未提供的部分用通用表述带过）：\n" + materialsOf(record) : "");
         StringBuilder sb = new StringBuilder();
         try {
             String full = llm.chatStream(sys, user, piece -> {
@@ -176,7 +182,7 @@ public class FormFillService {
             return full;
         } catch (Exception e) {
             log.warn("智能填报：LLM 起草失败（{}），回落事实拼装：{}", label, e.getMessage());
-            String text = fallbackNarrative(key, profile);
+            String text = isSummary ? fallbackSummary(profile, record) : fallbackNarrative(key, profile);
             // 回落也按块推送，前端体验一致
             for (String piece : chunk(text, 6)) {
                 try {
@@ -186,6 +192,54 @@ public class FormFillService {
             }
             return text;
         }
+    }
+
+    /** 从记录 fieldsJson 收集 material 素材，拼为分节素材块 */
+    private String materialsOf(FormRecord record) {
+        try {
+            List<Map<String, Object>> fields = om.readValue(record.getFieldsJson(), List.class);
+            StringBuilder b = new StringBuilder();
+            for (Map<String, Object> f : fields) {
+                if (!"material".equals(str(f.get("src")))) continue;
+                String label = str(f.get("label"));
+                String val = str(f.get("val"));
+                if (val.isEmpty()) continue;
+                b.append("【").append(label).append("】\n").append(val).append("\n");
+            }
+            return b.length() == 0 ? "（教师未提供素材，全部用通用表述带过，不得编造具体事实）" : b.toString();
+        } catch (Exception e) {
+            return "（教师未提供素材）";
+        }
+    }
+
+    /** 总结兜底：无 LLM 时按素材逐条拼装德能勤绩廉骨架 */
+    private String fallbackSummary(Map<String, Object> p, FormRecord record) {
+        String name = str(p.get("name")), zc = str(p.get("zc")), xl = str(p.get("xl"));
+        StringBuilder b = new StringBuilder("2025 年度，本人立足本职岗位，认真完成各项工作任务，现总结如下：\n");
+        Map<String, String> mats = new LinkedHashMap<>();
+        try {
+            List<Map<String, Object>> fields = om.readValue(record.getFieldsJson(), List.class);
+            for (Map<String, Object> f : fields) {
+                if ("material".equals(str(f.get("src"))) && !str(f.get("val")).isEmpty()) {
+                    mats.put(str(f.get("label")), str(f.get("val")));
+                }
+            }
+        } catch (Exception ignore) {
+        }
+        b.append("德：").append(mats.entrySet().stream().filter(e -> e.getKey().startsWith("德"))
+                .map(Map.Entry::getValue).findFirst().orElse("坚持政治学习，遵守师德师风各项要求。")).append("\n");
+        b.append("能：").append(mats.entrySet().stream().filter(e -> e.getKey().startsWith("能"))
+                .map(Map.Entry::getValue).findFirst().orElse("注重业务能力提升，参加培训学习。")).append("\n");
+        b.append("勤：").append(mats.entrySet().stream().filter(e -> e.getKey().startsWith("勤"))
+                .map(Map.Entry::getValue).findFirst().orElse("全年出勤正常，工作认真负责。")).append("\n");
+        StringBuilder ji = new StringBuilder();
+        mats.entrySet().stream().filter(e -> e.getKey().startsWith("绩")).map(Map.Entry::getValue)
+                .findFirst().ifPresent(v -> ji.append(v.replace("\n", "；")));
+        b.append("绩：").append(ji.length() > 0 ? ji : "完成年度各项教学与科研工作任务。").append("\n");
+        b.append("廉：").append(mats.entrySet().stream().filter(e -> e.getKey().startsWith("廉"))
+                .map(Map.Entry::getValue).findFirst().orElse("严格遵守廉洁自律各项规定。")).append("\n");
+        b.append("（以上为兜底草稿，仅基于教师素材与基础信息").append(xl.isEmpty() ? "" : "，" + zc + name + "，" + xl).append("，建议连接大模型后重新起草。）");
+        return b.toString();
     }
 
     /** 事实拼装兜底（LLM 不可用时） */
