@@ -119,15 +119,15 @@ public class FormFillService {
                 String val = str(profile.get(str(f.get("key"))));
                 f.put("val", val);
                 if (!val.isEmpty()) filled++;
-                send(emitter, fieldEvent(i, f, fb));
+                send(emitter, fieldEvent(i, f, fb, fields.size()));
                 Thread.sleep(60);
             } else if ("material".equals(src)) {
                 // 素材为用户已输入内容，只回显与计数，不参与直填/生成
                 if (!str(f.get("val")).isEmpty()) filled++;
-                send(emitter, fieldEvent(i, f, fb));
+                send(emitter, fieldEvent(i, f, fb, fields.size()));
             } else if ("need".equals(src)) {
                 if (!str(f.get("val")).isEmpty()) filled++;
-                send(emitter, fieldEvent(i, f, fb));
+                send(emitter, fieldEvent(i, f, fb, fields.size()));
             }
         }
         send(emitter, evt("stage", "stage", "generate", "state", "live", "text", "大模型起草叙述性内容…"));
@@ -301,12 +301,12 @@ public class FormFillService {
         return out;
     }
 
-    private Map<String, Object> fieldEvent(int index, Map<String, Object> f, boolean fallback) {
+    private Map<String, Object> fieldEvent(int index, Map<String, Object> f, boolean fallback, int total) {
         String basis = str(f.get("basis"));
         if (fallback && !"need".equals(str(f.get("src"))) && !basis.isEmpty()) {
             basis += "（数仓本次未提供，请人工核对）";
         }
-        Map<String, Object> e = evt("field", "index", index);
+        Map<String, Object> e = evt("field", "index", index, "idx", index + 1, "total", total);
         e.put("label", f.get("label"));
         e.put("g", f.get("g"));
         e.put("src", f.get("src"));
