@@ -34,7 +34,8 @@ public class ChatServiceImpl implements ChatService {
     /** 学院锡锡数据权限：111(全校)需 chat.all；其他学院锡锡需本院或 chat.all */
     private void assertAgentAllowed(Long userId, Agent agent) {
         if (agent == null || agent.getCollegeId() == null) return; // 通用智能体不受学院管控
-        boolean all = permissionService.has(userId, "chat.all");
+        // 全校锡锡与学院锡锡统一按数据范围判定（2026-11-22 功能全放开后口径一致）
+        boolean all = "all".equals(permissionService.scope(userId).get("scope"));
         if (all) return;
         if (agent.getCollegeId() == 0) {
             throw new BusinessException(403, "全校数据查询面向校领导与管理员开放，如需开通请联系管理员");

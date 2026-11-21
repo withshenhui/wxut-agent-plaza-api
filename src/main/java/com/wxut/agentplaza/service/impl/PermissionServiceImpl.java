@@ -31,8 +31,11 @@ public class PermissionServiceImpl implements PermissionService {
     /** 进程内缓存（量小；权限变更走 evict） */
     private final Map<Long, Set<String>> cache = new ConcurrentHashMap<>();
 
+    /** 功能权限全放开（2026-11-22 起只管数据范围）：所有登录用户默认拥有全部前台功能；
+     * 数据边界统一由 scope()（学院归属）控制，全校锡锡随数据范围走 */
     public static final Set<String> USER_DEFAULT = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "plaza.view", "chat.college", "teacher.form", "kb.use", "dev.entry"
+            "plaza.view", "chat.college", "teacher.form", "kb.use", "dev.entry",
+            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.export"
     )));
 
     /** 辅导员（t_xg_fdy 命中）自动加授 */
@@ -110,6 +113,8 @@ public class PermissionServiceImpl implements PermissionService {
         boolean all = "admin".equals(role) || "leader".equals(role)
                 || has(userId, "chat.all")
                 || collegeAll;
+        // 全校锡锡（agent 111）随数据范围：范围=全校者可用（工作台与锡锡口径一致）
+        r.put("chatAll", all);
         r.put("scope", all ? "all" : "college");
         r.put("collegeId", all ? 0 : cid);
         if (cid >= 0) {

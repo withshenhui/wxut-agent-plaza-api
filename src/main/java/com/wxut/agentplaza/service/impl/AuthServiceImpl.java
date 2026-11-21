@@ -59,7 +59,7 @@ public class AuthServiceImpl implements AuthService {
         }
         // 已同步用户的辅导员权限幂等补跑（与 CAS 链一致；数仓不可达静默跳过）
         collegeSyncService.syncIfNeeded(user, false);
-        boolean chatAll = "admin".equals(user.getRole()) || "leader".equals(user.getRole()) || permissionService.has(user.getId(), "chat.all");
+        boolean chatAll = "all".equals(permissionService.scope(user.getId()).get("scope"));
         String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole(), user.getCollegeId(), chatAll);
         LoginVO vo = new LoginVO();
         vo.setToken(token);
@@ -85,7 +85,7 @@ public class AuthServiceImpl implements AuthService {
         user.setPhone(dto.getPhone());
         userMapper.insert(user);
 
-        boolean chatAll = "admin".equals(user.getRole()) || "leader".equals(user.getRole()) || permissionService.has(user.getId(), "chat.all");
+        boolean chatAll = "all".equals(permissionService.scope(user.getId()).get("scope"));
         String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole(), user.getCollegeId(), chatAll);
         LoginVO vo = new LoginVO();
         vo.setToken(token);

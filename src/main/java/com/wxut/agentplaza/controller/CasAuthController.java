@@ -30,6 +30,8 @@ public class CasAuthController {
 
     private final AuthService authService;
     private final JwtTokenProvider jwtTokenProvider;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.wxut.agentplaza.service.PermissionService permissionService;
     private final CasConfig casConfig;
     private final CasOriginResolver originResolver;
 
@@ -100,7 +102,7 @@ public class CasAuthController {
             }
 
             SysUser user = authService.findOrCreateCasUser(uid, cn);
-            boolean chatAll = "admin".equals(user.getRole()) || "leader".equals(user.getRole());
+            boolean chatAll = "all".equals(permissionService.scope(user.getId()).get("scope"));
             String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole(), user.getCollegeId(), chatAll);
             response.sendRedirect(frontEnd + "/#/cas-callback?token=" + token);
         } catch (Exception e) {
