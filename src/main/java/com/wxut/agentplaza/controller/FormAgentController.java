@@ -129,7 +129,7 @@ public class FormAgentController {
     // ================= 填报记录 =================
 
     @GetMapping("/records")
-    @Operation(summary = "填报记录分页（普通用户仅本人）")
+    @Operation(summary = "填报记录分页（仅本人，管理员亦只看自己的）")
     public Result<PageResult<Map<String, Object>>> pageRecords(Authentication auth,
                                                                 @RequestParam(defaultValue = "1") long page,
                                                                 @RequestParam(defaultValue = "10") long size,
@@ -137,12 +137,17 @@ public class FormAgentController {
                                                                 @RequestParam(required = false) String status,
                                                                 @RequestParam(required = false) String tplName) {
         return Result.success(agentService.pageRecords(page, size, keyword, status, tplName,
-                usernameOf(auth), isAdmin(auth)));
+                usernameOf(auth), false));
     }
 
     @GetMapping("/records/{id}")
-    @Operation(summary = "记录详情（含字段）")
-    public Result<Map<String, Object>> getRecord(@PathVariable Long id) {
+    @Operation(summary = "记录详情（含字段，本人或管理员）")
+    public Result<Map<String, Object>> getRecord(@PathVariable Long id, Authentication auth) {
+        FormRecord fr = recordMapper.selectById(id);
+        if (fr == null) return Result.error(404, "记录不存在");
+        if (!isAdmin(auth) && !usernameOf(auth).equals(fr.getCreatedBy())) {
+            return Result.error(403, "仅可查看本人的填报记录");
+        }
         Map<String, Object> r = agentService.getRecord(id);
         if (r == null) return Result.error(404, "记录不存在");
         return Result.success(r);
