@@ -3,11 +3,9 @@ package com.wxut.agentplaza.controller;
 import com.wxut.agentplaza.common.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
-import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.security.core.Authentication;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -34,50 +32,22 @@ public class FundingInsightController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.wxut.agentplaza.service.PermissionService permissionService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.wxut.agentplaza.config.WarehouseJdbcProvider warehouseProvider;
+
+    /** 共享只读数仓池（2026-11-21 起全后端单池，避免挤爆 usr_gxai 角色配额） */
+    private JdbcTemplate jt() {
+        return warehouseProvider.get();
+    }
+
     /** 权限门 + 范围解析（每端点入口调用） */
-    private String gate(Authentication auth) {
-        Long userId = (Long) auth.getPrincipal();
-        permissionService.assertPerm(userId, "insight.funding");
-        return null;
+    private void gate(Authentication auth) {
+        permissionService.assertPerm((Long) auth.getPrincipal(), "insight.funding");
     }
 
     /** 范围覆写：college 范围强制本人学院 */
     private String scopedCollege(Authentication auth, String requested) {
-        Long userId = (Long) auth.getPrincipal();
-        return permissionService.resolveCollegeFilter(userId, requested);
-    }
-
-    @Value("${warehouse.url:jdbc:postgresql://210.28.145.81:5431/datav}")
-    private String warehouseUrl;
-
-    @Value("${warehouse.username:usr_gxai}")
-    private String warehouseUsername;
-
-    @Value("${warehouse.password:}")
-    private String warehousePassword;
-
-    private volatile JdbcTemplate warehouseJt;
-
-    /** 惰性建池：不注册 DataSource Bean，避免覆盖 Spring Boot 主数据源（MySQL）自动配置 */
-    private JdbcTemplate jt() {
-        if (warehouseJt == null) {
-            synchronized (this) {
-                if (warehouseJt == null) {
-                    try { Class.forName("org.postgresql.Driver"); } catch (ClassNotFoundException e) { throw new IllegalStateException(e); }
-                    HikariDataSource ds = new HikariDataSource();
-                    ds.setDriverClassName("org.postgresql.Driver");
-                    ds.setJdbcUrl(warehouseUrl);
-                    ds.setUsername(warehouseUsername);
-                    ds.setPassword(warehousePassword);
-                    ds.setMaximumPoolSize(4);
-                    ds.setReadOnly(true);
-                    ds.setConnectionInitSql("SET default_transaction_read_only = on; SET statement_timeout = '60s'");
-                    ds.setPoolName("warehouse-readonly-pool");
-                    warehouseJt = new JdbcTemplate(ds);
-                }
-            }
-        }
-        return warehouseJt;
+        return permissionService.resolveCollegeFilter((Long) auth.getPrincipal(), requested);
     }
 
     /* ---------- 共享口径 SQL ---------- */

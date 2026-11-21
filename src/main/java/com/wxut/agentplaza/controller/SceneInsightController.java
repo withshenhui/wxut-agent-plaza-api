@@ -3,11 +3,9 @@ package com.wxut.agentplaza.controller;
 import com.wxut.agentplaza.common.Result;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
-import com.zaxxer.hikari.HikariDataSource;
 import org.springframework.security.core.Authentication;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -32,6 +30,14 @@ public class SceneInsightController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.wxut.agentplaza.service.PermissionService permissionService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.wxut.agentplaza.config.WarehouseJdbcProvider warehouseProvider;
+
+    /** 共享只读数仓池（全后端单池） */
+    private JdbcTemplate jt() {
+        return warehouseProvider.get();
+    }
+
     /** 权限门（scene=safety|academic|mental） */
     private void gate(Authentication auth, String scene) {
         permissionService.assertPerm((Long) auth.getPrincipal(), "insight." + scene);
@@ -50,36 +56,6 @@ public class SceneInsightController {
             rows = rows.stream().filter(r -> want.equals(r.get("n"))).collect(java.util.stream.Collectors.toList());
         }
         return rows;
-    }
-
-    @Value("${warehouse.url:jdbc:postgresql://210.28.145.81:5431/datav}")
-    private String warehouseUrl;
-    @Value("${warehouse.username:usr_gxai}")
-    private String warehouseUsername;
-    @Value("${warehouse.password:}")
-    private String warehousePassword;
-
-    private volatile JdbcTemplate warehouseJt;
-
-    private JdbcTemplate jt() {
-        if (warehouseJt == null) {
-            synchronized (this) {
-                if (warehouseJt == null) {
-                    try { Class.forName("org.postgresql.Driver"); } catch (ClassNotFoundException e) { throw new IllegalStateException(e); }
-                    HikariDataSource ds = new HikariDataSource();
-                    ds.setDriverClassName("org.postgresql.Driver");
-                    ds.setJdbcUrl(warehouseUrl);
-                    ds.setUsername(warehouseUsername);
-                    ds.setPassword(warehousePassword);
-                    ds.setMaximumPoolSize(4);
-                    ds.setReadOnly(true);
-                    ds.setConnectionInitSql("SET default_transaction_read_only = on; SET statement_timeout = '60s'");
-                    ds.setPoolName("warehouse-readonly-pool");
-                    warehouseJt = new JdbcTemplate(ds);
-                }
-            }
-        }
-        return warehouseJt;
     }
 
     /* ---------- 宿管最新日映射（姓名/学院/年级） ---------- */

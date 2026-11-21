@@ -8,10 +8,8 @@ import com.wxut.agentplaza.mapper.SysCollegeMapper;
 import com.wxut.agentplaza.mapper.SysUserMapper;
 import com.wxut.agentplaza.mapper.SysUserPermMapper;
 import com.wxut.agentplaza.service.CollegeSyncService;
-import com.zaxxer.hikari.HikariDataSource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -28,17 +26,7 @@ public class CollegeSyncServiceImpl implements CollegeSyncService {
     private final SysUserMapper userMapper;
     private final SysCollegeMapper collegeMapper;
     private final SysUserPermMapper permMapper;
-
-    @Value("${warehouse.url:jdbc:postgresql://210.28.145.81:5431/datav}")
-    private String warehouseUrl;
-
-    @Value("${warehouse.username:usr_gxai}")
-    private String warehouseUsername;
-
-    @Value("${warehouse.password:}")
-    private String warehousePassword;
-
-    private volatile JdbcTemplate warehouseJt;
+    private final com.wxut.agentplaza.config.WarehouseJdbcProvider warehouseProvider;
 
     /** 数仓单位名 → sys_college 名（归一化） */
     private static final Map<String, String> NAME_FIX = new HashMap<>();
@@ -96,25 +84,9 @@ public class CollegeSyncServiceImpl implements CollegeSyncService {
         return NAME_FIX.getOrDefault(raw, raw);
     }
 
+    /** 共享只读数仓池（全后端单池） */
     private JdbcTemplate jt() {
-        if (warehouseJt == null) {
-            synchronized (this) {
-                if (warehouseJt == null) {
-                    try { Class.forName("org.postgresql.Driver"); } catch (ClassNotFoundException e) { throw new IllegalStateException(e); }
-                    HikariDataSource ds = new HikariDataSource();
-                    ds.setDriverClassName("org.postgresql.Driver");
-                    ds.setJdbcUrl(warehouseUrl);
-                    ds.setUsername(warehouseUsername);
-                    ds.setPassword(warehousePassword);
-                    ds.setMaximumPoolSize(2);
-                    ds.setReadOnly(true);
-                    ds.setConnectionInitSql("SET default_transaction_read_only = on; SET statement_timeout = '30s'");
-                    ds.setPoolName("college-sync-readonly-pool");
-                    warehouseJt = new JdbcTemplate(ds);
-                }
-            }
-        }
-        return warehouseJt;
+        return warehouseProvider.get();
     }
 
     @Override
