@@ -7,10 +7,13 @@ import com.wxut.agentplaza.dto.UserDTO;
 import com.wxut.agentplaza.entity.SysUser;
 import com.wxut.agentplaza.exception.BusinessException;
 import com.wxut.agentplaza.mapper.SysUserMapper;
+import com.wxut.agentplaza.service.PermissionService;
 import com.wxut.agentplaza.service.SysUserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -18,6 +21,8 @@ public class SysUserServiceImpl implements SysUserService {
 
     private final SysUserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final com.wxut.agentplaza.mapper.SysUserPermMapper permMapper;
+    private final PermissionService permissionService;
 
     @Override
     public PageResult<SysUser> listUsers(String keyword, Integer status, int page, int size) {
@@ -47,7 +52,26 @@ public class SysUserServiceImpl implements SysUserService {
         if (dto.getRole() != null) user.setRole(dto.getRole());
         if (dto.getStatus() != null) user.setStatus(dto.getStatus());
         if (dto.getAvatar() != null) user.setAvatar(dto.getAvatar());
+        if (dto.getCollegeId() != null) user.setCollegeId(dto.getCollegeId());
         userMapper.updateById(user);
+        // 个人权限覆盖：全量重写（仅显式传入 perms 时）
+        if (dto.getPerms() != null) {
+            permMapper.delete(new LambdaQueryWrapper<com.wxut.agentplaza.entity.SysUserPerm>()
+                    .eq(com.wxut.agentplaza.entity.SysUserPerm::getUserId, id)
+                    .eq(com.wxut.agentplaza.entity.SysUserPerm::getSource, "manual"));
+            for (Map.Entry<String, Boolean> e : dto.getPerms().entrySet()) {
+                // 与角色默认一致的不落库（省行数）；仅记差异
+                com.wxut.agentplaza.entity.SysUserPerm p = new com.wxut.agentplaza.entity.SysUserPerm();
+                p.setUserId(id);
+                p.setPermKey(e.getKey());
+                p.setGranted(Boolean.TRUE.equals(e.getValue()) ? 1 : 0);
+                p.setSource("manual");
+                permMapper.insert(p);
+            }
+            permissionService.evict(id);
+        } else {
+            permissionService.evict(id);
+        }
     }
 
     @Override

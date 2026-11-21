@@ -34,6 +34,10 @@ public class SysUser {
 
     private Integer status = 1;
 
+    private Integer collegeId;
+
+    private LocalDateTime collegeSyncedAt;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

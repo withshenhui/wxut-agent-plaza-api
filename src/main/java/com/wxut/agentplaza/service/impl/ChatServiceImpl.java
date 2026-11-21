@@ -27,11 +27,31 @@ public class ChatServiceImpl implements ChatService {
     private final ChatSessionMapper sessionMapper;
     private final ChatMessageMapper messageMapper;
     private final AgentMapper agentMapper;
+    private final com.wxut.agentplaza.service.PermissionService permissionService;
+    private final com.wxut.agentplaza.mapper.SysUserMapper userMapper;
+    private final com.wxut.agentplaza.mapper.SysCollegeMapper collegeMapper;
+
+    /** 学院锡锡数据权限：111(全校)需 chat.all；其他学院锡锡需本院或 chat.all */
+    private void assertAgentAllowed(Long userId, Agent agent) {
+        if (agent == null || agent.getCollegeId() == null) return; // 通用智能体不受学院管控
+        boolean all = permissionService.has(userId, "chat.all");
+        if (all) return;
+        if (agent.getCollegeId() == 0) {
+            throw new BusinessException(403, "全校数据查询面向校领导与管理员开放，如需开通请联系管理员");
+        }
+        com.wxut.agentplaza.entity.SysUser u = userMapper.selectById(userId);
+        if (u == null || u.getCollegeId() == null || !u.getCollegeId().equals(agent.getCollegeId())) {
+            com.wxut.agentplaza.entity.SysCollege c = collegeMapper.selectById(agent.getCollegeId());
+            String cn = c != null ? c.getName() : "其他学院";
+            throw new BusinessException(403, "该智能体面向" + cn + "老师开放，如需使用请联系管理员");
+        }
+    }
 
     @Override
     public ChatSessionVO createSession(Long userId, Long agentId, String title) {
         Agent agent = agentMapper.selectById(agentId);
         if (agent == null) throw new BusinessException("智能体不存在");
+        assertAgentAllowed(userId, agent);
         ChatSession session = new ChatSession();
         session.setAgentId(agentId);
         session.setUserId(userId);
@@ -74,6 +94,8 @@ public class ChatServiceImpl implements ChatService {
         ChatSession session = sessionMapper.selectById(sessionId);
         if (session == null) throw new BusinessException("会话不存在");
         if (!session.getUserId().equals(userId)) throw new BusinessException("无权操作此会话");
+        // 会话存在时也强制校验（权限可能中途收紧）
+        assertAgentAllowed(userId, agentMapper.selectById(session.getAgentId()));
         ChatMessage userMsg = new ChatMessage();
         userMsg.setSessionId(sessionId);
         userMsg.setSender("user");

@@ -41,6 +41,7 @@ public class SecurityConfig {
                 .antMatchers(HttpMethod.GET, "/api/v1/agents/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/models/**").permitAll()
+                .antMatchers(HttpMethod.GET, "/api/v1/colleges/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/configs/*").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/configs/llm/current-model").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/files/download/**").permitAll()

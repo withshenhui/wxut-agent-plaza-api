@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.security.core.Authentication;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -27,6 +28,29 @@ import java.util.Map;
 public class SceneInsightController {
 
     private static final DateTimeFormatter D = DateTimeFormatter.ISO_LOCAL_DATE;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.wxut.agentplaza.service.PermissionService permissionService;
+
+    /** 权限门（scene=safety|academic|mental） */
+    private void gate(Authentication auth, String scene) {
+        permissionService.assertPerm((Long) auth.getPrincipal(), "insight." + scene);
+    }
+
+    /** 范围覆写：college 范围强制本人学院 */
+    private String scoped(Authentication auth, String requested) {
+        return permissionService.resolveCollegeFilter((Long) auth.getPrincipal(), requested);
+    }
+
+    /** 学院分布行裁剪（college 范围只留本人学院） */
+    private List<Map<String, Object>> trim(List<Map<String, Object>> rows, Authentication auth) {
+        String only = scoped(auth, null);
+        if (only != null) {
+            final String want = only;
+            rows = rows.stream().filter(r -> want.equals(r.get("n"))).collect(java.util.stream.Collectors.toList());
+        }
+        return rows;
+    }
 
     @Value("${warehouse.url:jdbc:postgresql://210.28.145.81:5431/datav}")
     private String warehouseUrl;
@@ -71,7 +95,8 @@ public class SceneInsightController {
 
     @GetMapping("/safety/overview")
     @Operation(summary = "安全 KPI（观察窗）")
-    public Result<Map<String, Object>> safetyOverview(@RequestParam(defaultValue = "30") int windowDays) {
+    public Result<Map<String, Object>> safetyOverview(Authentication auth, @RequestParam(defaultValue = "30") int windowDays) {
+        gate(auth, "safety");
         JdbcTemplate jt = jt();
         LocalDate end = latestDormDate(jt);
         LocalDate start = end.minusDays(windowDays);
@@ -102,12 +127,13 @@ public class SceneInsightController {
 
     @GetMapping("/safety/colleges")
     @Operation(summary = "安全 学院分布")
-    public Result<List<Map<String, Object>>> safetyColleges(@RequestParam(defaultValue = "30") int windowDays) {
+    public Result<List<Map<String, Object>>> safetyColleges(Authentication auth, @RequestParam(defaultValue = "30") int windowDays) {
+        gate(auth, "safety");
         JdbcTemplate jt = jt();
         LocalDate end = latestDormDate(jt);
         LocalDate start = end.minusDays(windowDays);
         String s = start.format(D), e = end.plusDays(1).format(D);
-        return Result.success(jt.queryForList(
+        return Result.success(trim(jt.queryForList(
                 "WITH " + D_MAP + ", agg AS (" +
                 " SELECT s.xh," +
                 "  COUNT(*) FILTER (WHERE s.state = '6') AS no_return," +
@@ -118,14 +144,16 @@ public class SceneInsightController {
                 "  COUNT(*) FILTER (WHERE a.no_return >= 3 AND a.no_return <= 7) AS mid," +
                 "  COUNT(*) FILTER (WHERE a.no_return >= 1 AND a.no_return <= 2) AS watch" +
                 " FROM agg a JOIN d ON d.xh = a.xh WHERE a.no_return >= 1" +
-                " GROUP BY d.yxmc ORDER BY d.yxmc", s, e));
+                " GROUP BY d.yxmc ORDER BY d.yxmc", s, e), auth));
     }
 
     @GetMapping("/safety/students")
     @Operation(summary = "安全 名单")
-    public Result<Map<String, Object>> safetyStudents(@RequestParam(defaultValue = "30") int windowDays,
+    public Result<Map<String, Object>> safetyStudents(Authentication auth, @RequestParam(defaultValue = "30") int windowDays,
             @RequestParam(required = false) String level, @RequestParam(required = false) String college,
             @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+        gate(auth, "safety");
+        college = scoped(auth, college);
         JdbcTemplate jt = jt();
         LocalDate end = latestDormDate(jt);
         LocalDate start = end.minusDays(windowDays);
@@ -142,7 +170,8 @@ public class SceneInsightController {
 
     @GetMapping("/academic/overview")
     @Operation(summary = "学业 KPI（最新有数学期）")
-    public Result<Map<String, Object>> academicOverview() {
+    public Result<Map<String, Object>> academicOverview(Authentication auth) {
+        gate(auth, "academic");
         JdbcTemplate jt = jt();
         String term = latestTerm(jt);
         Map<String, Object> r = new HashMap<>();
@@ -163,24 +192,28 @@ public class SceneInsightController {
 
     @GetMapping("/academic/colleges")
     @Operation(summary = "学业 学院分布")
-    public Result<List<Map<String, Object>>> academicColleges() {
+    public Result<List<Map<String, Object>>> academicColleges(Authentication auth) {
+        gate(auth, "academic");
         JdbcTemplate jt = jt();
         String term = latestTerm(jt);
-        return Result.success(jt.queryForList(
+        return Result.success(trim(jt.queryForList(
                 "WITH " + D_MAP + ", g AS (SELECT xh AS xgh, COUNT(*) FILTER (WHERE zcj < 60) AS fail_cnt, ROUND(AVG(zcj),1) AS avg_score" +
                 " FROM usr_gxai.t_bzks_kscj WHERE xnxqid = ? AND isdel = '0' GROUP BY xh)" +
                 " SELECT d.yxmc AS n," +
                 "  COUNT(*) FILTER (WHERE g.fail_cnt >= 3) AS hi," +
                 "  COUNT(*) FILTER (WHERE g.fail_cnt = 2) AS mid," +
                 "  COUNT(*) FILTER (WHERE g.fail_cnt = 1 AND g.avg_score < 65) AS watch" +
-                " FROM g JOIN d ON d.xh = g.xgh GROUP BY d.yxmc ORDER BY d.yxmc", term));
+                " FROM g JOIN d ON d.xh = g.xgh GROUP BY d.yxmc ORDER BY d.yxmc", term), auth));
     }
 
     @GetMapping("/academic/students")
     @Operation(summary = "学业 名单")
     public Result<Map<String, Object>> academicStudents(
+            Authentication auth,
             @RequestParam(required = false) String level, @RequestParam(required = false) String college,
             @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+        gate(auth, "academic");
+        college = scoped(auth, college);
         JdbcTemplate jt = jt();
         String term = latestTerm(jt);
         return Result.success(studentsCommon(jt, "academic", term, null, level, college, q, page, size));
@@ -190,7 +223,8 @@ public class SceneInsightController {
 
     @GetMapping("/mental/overview")
     @Operation(summary = "心理关怀 KPI（多信号组合，近30天）")
-    public Result<Map<String, Object>> mentalOverview() {
+    public Result<Map<String, Object>> mentalOverview(Authentication auth) {
+        gate(auth, "mental");
         JdbcTemplate jt = jt();
         LocalDate cEnd = latestConsumptionDate(jt);
         String half2s = cEnd.minusDays(14).format(D), e = cEnd.plusDays(1).format(D);
@@ -227,14 +261,15 @@ public class SceneInsightController {
 
     @GetMapping("/mental/colleges")
     @Operation(summary = "心理 学院分布")
-    public Result<List<Map<String, Object>>> mentalColleges() {
+    public Result<List<Map<String, Object>>> mentalColleges(Authentication auth) {
+        gate(auth, "mental");
         JdbcTemplate jt = jt();
         LocalDate cEnd = latestConsumptionDate(jt);
         String half2s = cEnd.minusDays(14).format(D), e = cEnd.plusDays(1).format(D);
         String half1s = cEnd.minusDays(29).format(D), half1e = half2s;
         LocalDate dEnd = latestDormDate(jt);
         String ds = dEnd.minusDays(29).format(D), de = dEnd.plusDays(1).format(D);
-        return Result.success(jt.queryForList(
+        return Result.success(trim(jt.queryForList(
                 "WITH " + D_MAP + "," +
                 " c1 AS (SELECT xgh, SUM(xfzze)/100.0 AS s1 FROM usr_gxai.t_ykt_jkb c LEFT JOIN usr_gxai.t_ykt_zdxx z ON z.zdbh=c.zdbh" +
                 "  WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp AND (z.zdmc LIKE '%餐厅%' OR z.zdmc LIKE '%食堂%') GROUP BY xgh)," +
@@ -251,14 +286,17 @@ public class SceneInsightController {
                 "  COUNT(*) FILTER (WHERE sig.drop_pct >= 60 AND sig.no_return < 3) AS mid," +
                 "  COUNT(*) FILTER (WHERE sig.drop_pct >= 40 AND sig.drop_pct < 60) AS watch" +
                 " FROM sig JOIN d ON d.xh = sig.xgh GROUP BY d.yxmc ORDER BY d.yxmc",
-                half1s, half1e, half2s, e, ds, de));
+                half1s, half1e, half2s, e, ds, de), auth));
     }
 
     @GetMapping("/mental/students")
     @Operation(summary = "心理 名单")
     public Result<Map<String, Object>> mentalStudents(
+            Authentication auth,
             @RequestParam(required = false) String level, @RequestParam(required = false) String college,
             @RequestParam(required = false) String q, @RequestParam(defaultValue = "1") int page, @RequestParam(defaultValue = "20") int size) {
+        gate(auth, "mental");
+        college = scoped(auth, college);
         JdbcTemplate jt = jt();
         LocalDate cEnd = latestConsumptionDate(jt);
         String half2s = cEnd.minusDays(14).format(D), e = cEnd.plusDays(1).format(D);
@@ -272,8 +310,24 @@ public class SceneInsightController {
 
     @GetMapping("/detail")
     @Operation(summary = "学生未归明细 + 请假交叉核验")
-    public Result<Map<String, Object>> detail(@RequestParam String studentId, @RequestParam(defaultValue = "30") int windowDays) {
+    public Result<Map<String, Object>> detail(Authentication auth, @RequestParam String studentId, @RequestParam(defaultValue = "30") int windowDays) {
+        // safety 或 mental 任一权限即可看明细
+        Long uid = (Long) auth.getPrincipal();
+        if (!permissionService.has(uid, "insight.safety") && !permissionService.has(uid, "insight.mental")) {
+            throw new com.wxut.agentplaza.exception.BusinessException(403, "无权使用该功能，如需开通请联系管理员");
+        }
         JdbcTemplate jt = jt();
+        // 数据范围：college 范围校验该学生属于本人学院
+        String only = scoped(auth, null);
+        if (only != null) {
+            List<String> belongs = jt.queryForList(
+                    "SELECT DISTINCT yxmc FROM usr_gxai.t_zhsg_xskq WHERE xh = ? LIMIT 1", String.class, studentId);
+            String studentCollege = belongs.isEmpty() ? null : belongs.get(0);
+            String mapped = studentCollege == null ? null : (com.wxut.agentplaza.service.impl.CollegeSyncServiceImpl.collegeNameOf(studentCollege));
+            if (mapped == null || !mapped.equals(only)) {
+                throw new com.wxut.agentplaza.exception.BusinessException(403, "该学生不在您所在学院的数据范围内");
+            }
+        }
         LocalDate dEnd = latestDormDate(jt);
         LocalDate dStart = dEnd.minusDays(windowDays);
         String ds = dStart.format(D), de = dEnd.plusDays(1).format(D);

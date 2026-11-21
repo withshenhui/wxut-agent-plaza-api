@@ -15,4 +15,6 @@ public class AgentVO {
     private Integer isRecommended;
     private Integer isBuilding;
     private Long visitCount;
+    private Integer collegeId;
+    private String collegeName;
 }

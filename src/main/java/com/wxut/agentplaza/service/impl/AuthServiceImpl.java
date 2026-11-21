@@ -8,6 +8,8 @@ import com.wxut.agentplaza.exception.BusinessException;
 import com.wxut.agentplaza.mapper.SysUserMapper;
 import com.wxut.agentplaza.security.JwtTokenProvider;
 import com.wxut.agentplaza.service.AuthService;
+import com.wxut.agentplaza.service.CollegeSyncService;
+import com.wxut.agentplaza.service.PermissionService;
 import com.wxut.agentplaza.vo.LoginVO;
 import com.wxut.agentplaza.vo.UserInfoVO;
 import lombok.RequiredArgsConstructor;
@@ -22,9 +24,28 @@ public class AuthServiceImpl implements AuthService {
     private final SysUserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final CollegeSyncService collegeSyncService;
+    private final PermissionService permissionService;
+    private final com.wxut.agentplaza.mapper.SysCollegeMapper collegeMapper;
 
     @Value("${jwt.expiration}")
     private long expiration;
+
+    private void fillInfo(UserInfoVO info, SysUser user) {
+        info.setId(user.getId());
+        info.setUsername(user.getUsername());
+        info.setNickname(user.getNickname());
+        info.setAvatar(user.getAvatar());
+        info.setRole(user.getRole());
+        info.setCollegeId(user.getCollegeId());
+        if (user.getCollegeId() != null) {
+            com.wxut.agentplaza.entity.SysCollege c = collegeMapper.selectById(user.getCollegeId());
+            info.setCollegeName(c != null ? c.getName() : null);
+        }
+        java.util.Map<String, Object> scope = permissionService.scope(user.getId());
+        info.setDataScope((String) scope.get("scope"));
+        info.setPerms(new java.util.ArrayList<>(permissionService.perms(user.getId())));
+    }
 
     @Override
     public LoginVO login(LoginDTO dto) {
@@ -36,16 +57,13 @@ public class AuthServiceImpl implements AuthService {
         if (user.getStatus() == 0) {
             throw new BusinessException("账号已被禁用");
         }
-        String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
+        boolean chatAll = "admin".equals(user.getRole()) || "leader".equals(user.getRole()) || permissionService.has(user.getId(), "chat.all");
+        String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole(), user.getCollegeId(), chatAll);
         LoginVO vo = new LoginVO();
         vo.setToken(token);
         vo.setExpiresIn(expiration / 1000);
         UserInfoVO info = new UserInfoVO();
-        info.setId(user.getId());
-        info.setUsername(user.getUsername());
-        info.setNickname(user.getNickname());
-        info.setAvatar(user.getAvatar());
-        info.setRole(user.getRole());
+        fillInfo(info, user);
         vo.setUserInfo(info);
         return vo;
     }
@@ -65,15 +83,13 @@ public class AuthServiceImpl implements AuthService {
         user.setPhone(dto.getPhone());
         userMapper.insert(user);
 
-        String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
+        boolean chatAll = "admin".equals(user.getRole()) || "leader".equals(user.getRole()) || permissionService.has(user.getId(), "chat.all");
+        String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole(), user.getCollegeId(), chatAll);
         LoginVO vo = new LoginVO();
         vo.setToken(token);
         vo.setExpiresIn(expiration / 1000);
         UserInfoVO info = new UserInfoVO();
-        info.setId(user.getId());
-        info.setUsername(user.getUsername());
-        info.setNickname(user.getNickname());
-        info.setRole(user.getRole());
+        fillInfo(info, user);
         vo.setUserInfo(info);
         return vo;
     }
@@ -83,11 +99,7 @@ public class AuthServiceImpl implements AuthService {
         SysUser user = userMapper.selectById(userId);
         if (user == null) throw new BusinessException("用户不存在");
         UserInfoVO info = new UserInfoVO();
-        info.setId(user.getId());
-        info.setUsername(user.getUsername());
-        info.setNickname(user.getNickname());
-        info.setAvatar(user.getAvatar());
-        info.setRole(user.getRole());
+        fillInfo(info, user);
         return info;
     }
 
@@ -99,6 +111,8 @@ public class AuthServiceImpl implements AuthService {
             if (user.getStatus() == 0) {
                 throw new BusinessException("账号已被禁用");
             }
+            // 学院自动同步（幂等；数仓不可达不阻塞登录）
+            user = collegeSyncService.syncIfNeeded(user, false);
             return user;
         }
         user = new SysUser();
@@ -108,6 +122,7 @@ public class AuthServiceImpl implements AuthService {
         user.setRole("user");
         user.setStatus(1);
         userMapper.insert(user);
+        user = collegeSyncService.syncIfNeeded(user, false);
         return user;
     }
 }

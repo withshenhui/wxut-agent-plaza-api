@@ -31,6 +31,7 @@ public class AgentServiceImpl implements AgentService {
     private final AgentMapper agentMapper;
     private final AgentTagMapper agentTagMapper;
     private final AgentCategoryMapper categoryMapper;
+    private final com.wxut.agentplaza.mapper.SysCollegeMapper collegeMapper;
 
     @Override
     public PageResult<AgentVO> search(AgentQueryDTO dto) {
@@ -63,6 +64,11 @@ public class AgentServiceImpl implements AgentService {
         vo.setExternalUrl(agent.getExternalUrl());
         vo.setIsRecommended(agent.getIsRecommended());
         vo.setVisitCount(agent.getVisitCount());
+        vo.setCollegeId(agent.getCollegeId());
+        if (agent.getCollegeId() != null) {
+            com.wxut.agentplaza.entity.SysCollege c = collegeMapper.selectById(agent.getCollegeId());
+            vo.setCollegeName(c != null ? c.getName() : null);
+        }
         List<AgentTag> tags = agentTagMapper.selectList(
                 new LambdaQueryWrapper<AgentTag>().eq(AgentTag::getAgentId, id));
         vo.setTags(tags.stream().map(AgentTag::getTagName).collect(Collectors.toList()));
@@ -167,6 +173,11 @@ public class AgentServiceImpl implements AgentService {
         vo.setIsRecommended(a.getIsRecommended());
         vo.setIsBuilding(a.getIsBuilding() != null && a.getIsBuilding() == 1 ? 1 : 0);
         vo.setVisitCount(a.getVisitCount());
+        vo.setCollegeId(a.getCollegeId());
+        if (a.getCollegeId() != null) {
+            com.wxut.agentplaza.entity.SysCollege c = collegeMapper.selectById(a.getCollegeId());
+            vo.setCollegeName(c != null ? c.getName() : null);
+        }
         if (a.getCategoryId() != null) {
             vo.setCategoryKey(categoryMap.keySet().stream()
                     .filter(k -> k.equals(a.getCategoryId())).findFirst()

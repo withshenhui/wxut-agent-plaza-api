@@ -8,6 +8,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import com.zaxxer.hikari.HikariDataSource;
+import org.springframework.security.core.Authentication;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -21,6 +22,7 @@ import java.util.Map;
  * 口径（南理工"暖心饭卡"模式）：达标=观察窗内食堂就餐 ≥40 顿；
  * 分位=同学院同年级单顿均价 PERCENT_RANK；高 P5 / 中 P5-15 / 观察 P15-40。
  * SQL 已在 91 数仓真实验证（2026-11-20：30 天窗达标 1078 人，三档 74/103/253）。
+ * 权限（2026-11-21 RBAC）：需 insight.funding；数据范围 college 范围强制本人学院。
  */
 @Tag(name = "精准资助分析")
 @RestController
@@ -28,6 +30,22 @@ import java.util.Map;
 public class FundingInsightController {
 
     private static final DateTimeFormatter D = DateTimeFormatter.ISO_LOCAL_DATE;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.wxut.agentplaza.service.PermissionService permissionService;
+
+    /** 权限门 + 范围解析（每端点入口调用） */
+    private String gate(Authentication auth) {
+        Long userId = (Long) auth.getPrincipal();
+        permissionService.assertPerm(userId, "insight.funding");
+        return null;
+    }
+
+    /** 范围覆写：college 范围强制本人学院 */
+    private String scopedCollege(Authentication auth, String requested) {
+        Long userId = (Long) auth.getPrincipal();
+        return permissionService.resolveCollegeFilter(userId, requested);
+    }
 
     @Value("${warehouse.url:jdbc:postgresql://210.28.145.81:5431/datav}")
     private String warehouseUrl;
@@ -85,7 +103,9 @@ public class FundingInsightController {
 
     @GetMapping("/overview")
     @Operation(summary = "KPI 总览（观察窗）")
-    public Result<Map<String, Object>> overview(@RequestParam(defaultValue = "30") int windowDays) {
+    public Result<Map<String, Object>> overview(Authentication auth,
+            @RequestParam(defaultValue = "30") int windowDays) {
+        gate(auth);
         JdbcTemplate jt = jt();
         LocalDate end = latestConsumptionDate(jt);
         LocalDate start = end.minusDays(windowDays);
@@ -116,7 +136,9 @@ public class FundingInsightController {
 
     @GetMapping("/colleges")
     @Operation(summary = "各学院三档分布")
-    public Result<List<Map<String, Object>>> colleges(@RequestParam(defaultValue = "30") int windowDays) {
+    public Result<List<Map<String, Object>>> colleges(Authentication auth,
+            @RequestParam(defaultValue = "30") int windowDays) {
+        gate(auth);
         JdbcTemplate jt = jt();
         LocalDate end = latestConsumptionDate(jt);
         LocalDate start = end.minusDays(windowDays);
@@ -127,12 +149,20 @@ public class FundingInsightController {
                 "  COUNT(*) FILTER (WHERE pr >= 0.05 AND pr < 0.15) AS mid," +
                 "  COUNT(*) FILTER (WHERE pr >= 0.15 AND pr < 0.40) AS watch" +
                 " FROM pct GROUP BY college ORDER BY college", s, e);
+        // college 范围：只返回本人学院一行
+        String only = scopedCollege(auth, null);
+        if (only != null) {
+            final String want = only;
+            rows = rows.stream().filter(r -> want.equals(r.get("n"))).collect(java.util.stream.Collectors.toList());
+        }
         return Result.success(rows);
     }
 
     @GetMapping("/histogram")
     @Operation(summary = "单顿均价分位分布（达标人群 20 桶）")
-    public Result<List<Map<String, Object>>> histogram(@RequestParam(defaultValue = "30") int windowDays) {
+    public Result<List<Map<String, Object>>> histogram(Authentication auth,
+            @RequestParam(defaultValue = "30") int windowDays) {
+        gate(auth);
         JdbcTemplate jt = jt();
         LocalDate end = latestConsumptionDate(jt);
         LocalDate start = end.minusDays(windowDays);
@@ -180,12 +210,16 @@ public class FundingInsightController {
     @GetMapping("/students")
     @Operation(summary = "线索名单（分页）")
     public Result<Map<String, Object>> students(
+            Authentication auth,
             @RequestParam(defaultValue = "30") int windowDays,
             @RequestParam(required = false) String level,
             @RequestParam(required = false) String college,
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
+        gate(auth);
+        // 数据范围：college 范围忽略请求参数强制本人学院（all 范围放行）
+        college = scopedCollege(auth, college);
         JdbcTemplate jt = jt();
         LocalDate end = latestConsumptionDate(jt);
         LocalDate start = end.minusDays(windowDays);

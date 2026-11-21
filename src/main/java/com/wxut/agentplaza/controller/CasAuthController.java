@@ -100,7 +100,8 @@ public class CasAuthController {
             }
 
             SysUser user = authService.findOrCreateCasUser(uid, cn);
-            String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
+            boolean chatAll = "admin".equals(user.getRole()) || "leader".equals(user.getRole());
+            String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole(), user.getCollegeId(), chatAll);
             response.sendRedirect(frontEnd + "/#/cas-callback?token=" + token);
         } catch (Exception e) {
             String errorMsg = e.getMessage() != null ? e.getMessage() : "unknown";

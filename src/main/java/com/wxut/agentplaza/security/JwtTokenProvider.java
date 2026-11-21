@@ -2,6 +2,7 @@ package com.wxut.agentplaza.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -22,12 +23,19 @@ public class JwtTokenProvider {
     }
 
     public String generateToken(Long userId, String username, String role) {
+        return generateToken(userId, username, role, null, false);
+    }
+
+    /** 扩展签发（RBAC）：cid=学院id、chatAll=全校查询授权，供查询网关校验数据权限 */
+    public String generateToken(Long userId, String username, String role, Integer collegeId, boolean chatAll) {
         Date now = new Date();
-        return Jwts.builder()
+        JwtBuilder b = Jwts.builder()
                 .subject(userId.toString())
                 .claim("username", username)
-                .claim("role", role)
-                .issuedAt(now)
+                .claim("role", role);
+        if (collegeId != null) b.claim("cid", collegeId);
+        if (chatAll) b.claim("pem", "chat.all");
+        return b.issuedAt(now)
                 .expiration(new Date(now.getTime() + expiration))
                 .signWith(key)
                 .compact();

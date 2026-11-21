@@ -37,6 +37,9 @@ public class Agent {
     /** 建设中：1=建设中（广场列表不展示，后台可见） */
     private Integer isBuilding;
 
+    /** 学院归属（sys_college.id；0=全校虚拟行；null=通用智能体不受学院管控） */
+    private Integer collegeId;
+
     private Integer status;
 
     private Integer sortOrder;

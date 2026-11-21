@@ -78,7 +78,7 @@ public class SsoController {
                     redirectError(request, response, app, "forbidden");
                     return;
                 }
-                String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole());
+                String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole(), user.getCollegeId(), true);
                 // 前端回跳按请求来源动态生成：IP 进回 IP，域名进回域名
                 response.sendRedirect(originResolver.resolveFrontEndBase(request)
                         + "/#/admin/sso-callback?token="
