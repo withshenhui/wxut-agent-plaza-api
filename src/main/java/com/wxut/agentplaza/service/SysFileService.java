@@ -7,4 +7,5 @@ public interface SysFileService {
     SysFile upload(MultipartFile file, Long userId);
     SysFile getById(Long id);
     void delete(Long id);
+    com.wxut.agentplaza.common.PageResult<SysFile> list(int page, int size);
 }

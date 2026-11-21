@@ -60,4 +60,12 @@ public class SysFileServiceImpl implements SysFileService {
         new File(f.getFilePath()).delete();
         fileMapper.deleteById(id);
     }
+
+    @Override
+    public com.wxut.agentplaza.common.PageResult<SysFile> list(int page, int size) {
+        return com.wxut.agentplaza.common.PageResult.of(fileMapper.selectPage(
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page, size),
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SysFile>()
+                        .orderByDesc(SysFile::getCreatedAt)));
+    }
 }

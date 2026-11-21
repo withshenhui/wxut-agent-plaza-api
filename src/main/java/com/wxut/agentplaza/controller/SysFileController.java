@@ -33,6 +33,14 @@ public class SysFileController {
         return Result.success(fileService.upload(file, userId));
     }
 
+    @GetMapping
+    @Operation(summary = "文件列表（分页）")
+    public Result<com.wxut.agentplaza.common.PageResult<SysFile>> list(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return Result.success(fileService.list(page, size));
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "获取文件信息")
     public Result<SysFile> getById(@PathVariable Long id) {
