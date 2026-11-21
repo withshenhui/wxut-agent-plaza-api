@@ -82,9 +82,59 @@ public class FormExportService {
                 fillContCell(contCell, paras.subList(Math.min(splitAt, paras.size()), paras.size()));
             }
 
+            // 考核年度替换：模板副标题“（2025年度）”按大模型分析结果替换
+            String khnf = "";
+            try {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> fs = om.readValue(record.getFieldsJson(), List.class);
+                for (Map<String, Object> f : fs) {
+                    if ("_khnf".equals(String.valueOf(f.get("key"))) && f.get("val") != null) {
+                        String v = String.valueOf(f.get("val")).trim().replaceAll("[^0-9]", "");
+                        if (v.length() == 4) khnf = v;
+                    }
+                }
+            } catch (Exception ignore) {
+            }
+            if (!khnf.isEmpty()) {
+                replaceYearInDoc(doc, khnf);
+            }
+
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             doc.write(out);
             return out.toByteArray();
+        }
+    }
+
+    /** 全文把“2025年度”替换为实际考核年度（标题副题等在正文段落，不在表格内） */
+    private void replaceYearInDoc(XWPFDocument doc, String khnf) {
+        java.util.function.Consumer<XWPFParagraph> fix = p -> {
+            String t = p.getText();
+            if (t == null || !t.contains("2025年度")) return;
+            String nt = t.replace("2025年度", khnf + "年度");
+            if (p.getRuns().isEmpty()) { p.createRun().setText(nt); return; }
+            p.getRuns().get(0).setText(nt, 0);
+            for (int i = p.getRuns().size() - 1; i >= 1; i--) p.removeRun(i);
+        };
+        for (XWPFParagraph p : doc.getParagraphs()) fix.accept(p);
+        for (XWPFTable tb : doc.getTables()) {
+            for (XWPFTableRow row : tb.getRows()) {
+                for (XWPFTableCell cell : row.getTableCells()) {
+                    for (XWPFParagraph p : cell.getParagraphs()) fix.accept(p);
+                }
+            }
+        }
+        for (XWPFTable tb : doc.getTables()) {
+            for (XWPFTableRow row : tb.getRows()) {
+                for (XWPFTableCell cell : row.getTableCells()) {
+                    for (XWPFTable it : cell.getTables()) {
+                        for (XWPFTableRow r2 : it.getRows()) {
+                            for (XWPFTableCell c2 : r2.getTableCells()) {
+                                for (XWPFParagraph p : c2.getParagraphs()) fix.accept(p);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

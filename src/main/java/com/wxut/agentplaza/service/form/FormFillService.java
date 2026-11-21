@@ -66,8 +66,10 @@ public class FormFillService {
                 if (index < 0 || index >= fields.size()) throw new IllegalArgumentException("字段序号越界");
                 Map<String, Object> f = fields.get(index);
                 Map<String, Object> profile = warehouse.getProfile(record.getTeacherId(), record.getTeacherName());
+                String khnf = fields.stream().filter(x -> "_khnf".equals(str(x.get("key"))))
+                        .map(x -> str(x.get("val"))).findFirst().orElse(assessYear());
                 send(emitter, evt("nstart", "index", index, "label", f.get("label")));
-                String text = narrative(emitter, index, f, profile, record);
+                String text = narrative(emitter, index, f, profile, record, khnf);
                 f.put("val", text);
                 record.setFieldsJson(om.writeValueAsString(fields));
                 record.setFillCount(countFilled(fields));
@@ -89,7 +91,7 @@ public class FormFillService {
 
     private void run(FormRecord record, SseEmitter emitter) throws Exception {
         List<Map<String, Object>> fields = readFields(record);
-        int total = fields.size();
+        int total = (int) fields.stream().filter(f -> !"_khnf".equals(str(f.get("key")))).count();
         send(emitter, evt("start", "total", total, "recordId", record.getId()));
 
         // 阶段 1：解析模板
@@ -109,16 +111,30 @@ public class FormFillService {
                 : nomatch ? "工号 " + record.getTeacherId() + " 未在教职工数仓命中 · 数仓直填字段请手动补充"
                 : "已命中 " + profile.get("name") + "（工号 " + profile.get("zgh") + "）· 教职工 / 学历 / 科研 / 评价 / 考核"));
 
-        // 阶段 3：生成内容
-        send(emitter, evt("stage", "stage", "generate", "state", "live", "text", "直填结构化字段…"));
+        // 阶段 3：生成内容（先由大模型分析本次填报对应的考核年度）
+        send(emitter, evt("stage", "stage", "generate", "state", "live", "text", "大模型分析考核年度…"));
+        String khnf = assessYear();
+        for (int i = 0; i < fields.size(); i++) {
+            Map<String, Object> f = fields.get(i);
+            if ("_khnf".equals(str(f.get("key")))) {
+                f.put("val", khnf);
+                send(emitter, fieldEvent(i, f, false, fields.size()));
+            }
+        }
+        send(emitter, evt("stage", "stage", "generate", "state", "live", "text",
+                "考核年度：" + khnf + " · 开始直填结构化字段…"));
         int filled = 0;
         for (int i = 0; i < fields.size(); i++) {
             Map<String, Object> f = fields.get(i);
             String src = str(f.get("src"));
+            boolean edited = Boolean.TRUE.equals(f.get("edited"));
             if ("db".equals(src)) {
-                String val = str(profile.get(str(f.get("key"))));
-                f.put("val", val);
-                if (!val.isEmpty()) filled++;
+                // 用户已手动编辑过的字段不覆盖，保留本人填写
+                if (!edited) {
+                    String val = str(profile.get(str(f.get("key"))));
+                    f.put("val", val);
+                }
+                if (!str(f.get("val")).isEmpty()) filled++;
                 send(emitter, fieldEvent(i, f, fb, fields.size()));
                 Thread.sleep(60);
             } else if ("material".equals(src)) {
@@ -134,8 +150,15 @@ public class FormFillService {
         for (int i = 0; i < fields.size(); i++) {
             Map<String, Object> f = fields.get(i);
             if (!"ai".equals(str(f.get("src")))) continue;
+            // 用户已手动改写过的叙述字段（如本人总结）不再覆盖
+            if (Boolean.TRUE.equals(f.get("edited")) && !str(f.get("val")).isEmpty()) {
+                send(emitter, evt("nstart", "index", i, "label", f.get("label")));
+                send(emitter, evt("nend", "index", i, "val", str(f.get("val"))));
+                filled++;
+                continue;
+            }
             send(emitter, evt("nstart", "index", i, "label", f.get("label")));
-            String text = narrative(emitter, i, f, profile, record);
+            String text = narrative(emitter, i, f, profile, record, khnf);
             f.put("val", text);
             filled++;
             send(emitter, evt("nend", "index", i, "val", text));
@@ -157,16 +180,67 @@ public class FormFillService {
         emitter.complete();
     }
 
+    /** 考核年度：大模型按当前日期与填报场景分析；失败回落「上一个自然年」规则 */
+    public String assessYear() {
+        String today = java.time.LocalDate.now().toString();
+        String fallback = String.valueOf(java.time.LocalDate.now().getYear() - 1);
+        try {
+            String sys = "你负责判断事业单位年度考核登记表对应的考核年度。"
+                    + "规则常识：年度考核在次年初进行；若当前已接近年末（11-12月），也可能在为本年度考核做准备。"
+                    + "只输出一个四位年份数字，不要任何其他文字。";
+            String user = "今天是 " + today + "。教师正在填写《江苏省事业单位工作人员年度考核登记表》。"
+                    + "请判断本次填报针对的考核年度，只输出年份数字。";
+            String out = llm.chat(sys, user).replaceAll("[^0-9]", "");
+            if (out.length() == 4) {
+                int y = Integer.parseInt(out);
+                int now = java.time.LocalDate.now().getYear();
+                if (y >= now - 1 && y <= now) return out;
+            }
+        } catch (Exception e) {
+            log.warn("智能填报：考核年度大模型分析失败，回落规则推断：{}", e.getMessage());
+        }
+        return fallback;
+    }
+
+    /** 素材 AI 填写：按维度结合数仓事实生成要点（每行一条），仅供预填，不直接覆盖用户内容 */
+    public String aiMaterial(String teacherId, String teacherName, String fieldKey, String fieldLabel, String current) {
+        Map<String, Object> profile = warehouse.getProfile(teacherId, teacherName);
+        String khnf = assessYear();
+        String dim;
+        switch (fieldKey == null ? "" : fieldKey) {
+            case "matJi": dim = "绩·本年度工作要点：围绕教学、科研（论文/专利/项目/经费）、竞赛指导、建设任务等归纳实绩要点，每条尽量带数仓中的具体数字。"; break;
+            case "matDe": dim = "德·思想政治与师德师风：理论学习、师德建设、立德树人方面要点；数仓无直接数据的部分给通用条目，不编造具体事实。"; break;
+            case "matNeng": dim = "能·业务能力提升：培训进修、技能取证、企业实践、信息化能力等要点；数仓无直接数据的部分给通用条目，不编造。"; break;
+            case "matQin": dim = "勤·工作态度与出勤：出勤守岗、承担公共事务、社会兼职等要点。"; break;
+            case "matLian": dim = "廉·廉洁自律：纪律学习、廉洁承诺、规范履职等要点。"; break;
+            default: dim = "补充素材：与年度考核相关的其他事实要点。"; break;
+        }
+        String sys = "你是高校教师年度考核素材整理助手。依据数仓事实生成填写要点，每行一条、简洁具体；"
+                + "数仓没有的事实不要编造，可以给出该维度的通用要点（不带具体数字）。只输出要点列表，不要标题和说明。";
+        String user = "考核年度：" + khnf + "。栏目：" + fieldLabel + "。" + dim
+                + "\n教师数仓事实（JSON）：" + jsonOf(profile)
+                + (current == null || current.trim().isEmpty() ? "" : "\n\n教师已写的要点（参考语气与侧重，可补充但不要重复）：\n" + current.trim())
+                + "\n\n输出 3-6 条要点，每行一条。";
+        try {
+            String text = llm.chat(sys, user).trim();
+            if (!text.isEmpty()) return text;
+        } catch (Exception e) {
+            log.warn("智能填报：素材AI填写失败（{}）：{}", fieldKey, e.getMessage());
+            throw new IllegalArgumentException("AI 起草失败，请稍后重试或手动填写");
+        }
+        throw new IllegalArgumentException("AI 起草失败，请手动填写");
+    }
+
     /** 叙述字段：优先 LLM 流式起草；失败回落事实拼装 */
     private String narrative(SseEmitter emitter, int index, Map<String, Object> f,
-                             Map<String, Object> profile, FormRecord record) {
+                             Map<String, Object> profile, FormRecord record, String khnf) {
         String key = str(f.get("key"));
         String label = str(f.get("label"));
         String brief = FormFieldCatalog.narrativeBrief(key);
         boolean isSummary = "summary1".equals(key);
         String sys = "你是高校教师填报材料撰写助手。只依据用户提供的事实数据与素材撰写，禁止编造任何数字、荣誉或经历；"
                 + "事实数据中没有的信息直接略过，不要用“某”“若干”等占位。语言平实书面化。直接输出正文，不要输出任何前缀、标题或说明。";
-        String user = "栏目：" + label + "。写作要求：" + brief + "。"
+        String user = "本次填报的考核年度：" + khnf + "年（行文提及年度时以此为准）。栏目：" + label + "。写作要求：" + brief + "。"
                 + "教师事实数据（JSON）：" + jsonOf(profile)
                 + (isSummary ? "\n\n教师提供的分节素材要点（优先使用，逐条落实；未提供的部分用通用表述带过）：\n" + materialsOf(record) : "");
         StringBuilder sb = new StringBuilder();
@@ -181,7 +255,7 @@ public class FormFillService {
             return full;
         } catch (Exception e) {
             log.warn("智能填报：LLM 起草失败（{}），回落事实拼装：{}", label, e.getMessage());
-            String text = isSummary ? fallbackSummary(profile, record) : fallbackNarrative(key, profile);
+            String text = isSummary ? fallbackSummary(profile, record, khnf) : fallbackNarrative(key, profile);
             // 回落也按块推送，前端体验一致
             for (String piece : chunk(text, 6)) {
                 try {
@@ -212,9 +286,9 @@ public class FormFillService {
     }
 
     /** 总结兜底：无 LLM 时按素材逐条拼装德能勤绩廉骨架 */
-    private String fallbackSummary(Map<String, Object> p, FormRecord record) {
+    private String fallbackSummary(Map<String, Object> p, FormRecord record, String khnf) {
         String name = str(p.get("name")), zc = str(p.get("zc")), xl = str(p.get("xl"));
-        StringBuilder b = new StringBuilder("2025 年度，本人立足本职岗位，认真完成各项工作任务，现总结如下：\n");
+        StringBuilder b = new StringBuilder(khnf + " 年度，本人立足本职岗位，认真完成各项工作任务，现总结如下：\n");
         Map<String, String> mats = new LinkedHashMap<>();
         try {
             List<Map<String, Object>> fields = om.readValue(record.getFieldsJson(), List.class);

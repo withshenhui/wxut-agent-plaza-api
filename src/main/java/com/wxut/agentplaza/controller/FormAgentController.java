@@ -160,6 +160,32 @@ public class FormAgentController {
         if (!usernameOf(auth).equals(r.getCreatedBy())) throw new IllegalArgumentException("无权操作他人记录");
     }
 
+    @PostMapping("/ai-material")
+    @Operation(summary = "素材 AI 填写（按维度结合数仓事实起草要点；仅登录本人）")
+    public Result<Map<String, Object>> aiMaterial(@RequestBody Map<String, Object> body, Authentication auth) {
+        try {
+            SysUser u = null;
+            try {
+                u = userMapper.selectById((Long) auth.getPrincipal());
+            } catch (Exception ignore) {
+            }
+            if (u == null) return Result.error(401, "请先登录");
+            String key = body.get("fieldKey") == null ? "" : String.valueOf(body.get("fieldKey"));
+            String label = body.get("fieldLabel") == null ? "" : String.valueOf(body.get("fieldLabel"));
+            String current = body.get("current") == null ? "" : String.valueOf(body.get("current"));
+            String text = fillService.aiMaterial(u.getUsername(),
+                    u.getNickname() == null || u.getNickname().isEmpty() ? u.getUsername() : u.getNickname(),
+                    key, label, current);
+            logService.save(opLog(u.getUsername(), "使用", "智能填报",
+                    "素材AI填写 · " + label));
+            Map<String, Object> out = new java.util.LinkedHashMap<>();
+            out.put("text", text);
+            return Result.success(out);
+        } catch (IllegalArgumentException e) {
+            return Result.error(400, e.getMessage());
+        }
+    }
+
     @PostMapping("/records")
     @Operation(summary = "新建填报记录（进入 AI 填写；填报主体=登录者本人）")
     public Result<Long> createRecord(@RequestBody Map<String, Object> body, Authentication auth) {

@@ -304,8 +304,13 @@ public class FormAgentService {
         r.setTeacherName(teacherName == null ? "" : teacherName);
         r.setTeacherId(teacherId == null ? "" : teacherId);
         List<Map<String, Object>> fs = fields != null ? fields : parseFields(t);
+        // 考核年度：隐藏字段，由流水线大模型分析生成（导出与预览共用）
+        Map<String, Object> khnf = new LinkedHashMap<>();
+        khnf.put("g", "g0"); khnf.put("label", "考核年度");
+        khnf.put("src", "calc"); khnf.put("key", "_khnf"); khnf.put("val", "");
+        fs.add(khnf);
         r.setFieldsJson(writeFields(fs));
-        r.setTotalCount(fs.size());
+        r.setTotalCount(fs.size() - 1);
         r.setFillCount(countFilled(fs));
         r.setStatus(statusOf(fs));
         r.setExportFormats("");
@@ -325,7 +330,7 @@ public class FormAgentService {
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> fs = (List<Map<String, Object>>) fields;
             r.setFieldsJson(writeFields(fs));
-            r.setTotalCount(fs.size());
+            r.setTotalCount((int) fs.stream().filter(f -> !isHidden(f)).count());
             r.setFillCount(countFilled(fs));
             r.setStatus(statusOf(fs));
         } else if (body.containsKey("status")) {
@@ -368,12 +373,18 @@ public class FormAgentService {
     private static int countFilled(List<Map<String, Object>> fields) {
         int n = 0;
         for (Map<String, Object> f : fields) {
+            if (isHidden(f)) continue;
             String val = str(f.get("val"));
             if ("need".equals(f.get("src")) && val.isEmpty()) continue;
             if (val.isEmpty() && !"need".equals(f.get("src"))) continue;
             if (!val.isEmpty()) n++;
         }
         return n;
+    }
+
+    /** 隐藏系统字段（_ 前缀，如考核年度），不参与填写进度统计 */
+    static boolean isHidden(Map<String, Object> f) {
+        return String.valueOf(f.get("key")).startsWith("_");
     }
 
     private static String statusOf(List<Map<String, Object>> fields) {
