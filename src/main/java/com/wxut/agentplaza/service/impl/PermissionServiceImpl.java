@@ -101,12 +101,16 @@ public class PermissionServiceImpl implements PermissionService {
         SysUser user = userMapper.selectById(userId);
         Map<String, Object> r = new HashMap<>();
         String role = user == null || user.getRole() == null ? "user" : user.getRole();
-        boolean all = "admin".equals(role) || "leader".equals(role)
-                // 全校锡锡授权视为全校范围（可单独授 chat.all 给研究人员）
-                || has(userId, "chat.all");
-        r.put("scope", all ? "all" : "college");
         Integer cid = user == null ? null : user.getCollegeId();
         if (cid == null) cid = -1;
+        // 学院归属为「全校」虚拟行（sys_college.id=0, scope_all=1）→ 数据范围全校
+        // 用途：校资助中心等业务岗——数据全校可见，但不带来任何功能权限（chat.all 等仍需单独授予）
+        boolean collegeAll = cid == 0
+                || (cid > 0 && isScopeAllCollege(cid));
+        boolean all = "admin".equals(role) || "leader".equals(role)
+                || has(userId, "chat.all")
+                || collegeAll;
+        r.put("scope", all ? "all" : "college");
         r.put("collegeId", all ? 0 : cid);
         if (cid >= 0) {
             SysCollege c = collegeMapper.selectById(cid);
@@ -115,6 +119,11 @@ public class PermissionServiceImpl implements PermissionService {
             r.put("collegeName", null);
         }
         return r;
+    }
+
+    private boolean isScopeAllCollege(Integer cid) {
+        SysCollege c = collegeMapper.selectById(cid);
+        return c != null && c.getScopeAll() != null && c.getScopeAll() == 1;
     }
 
     @Override
