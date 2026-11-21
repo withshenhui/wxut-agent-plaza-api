@@ -28,6 +28,9 @@ public class CollegeSyncServiceImpl implements CollegeSyncService {
     private final SysUserPermMapper permMapper;
     private final com.wxut.agentplaza.config.WarehouseJdbcProvider warehouseProvider;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.wxut.agentplaza.service.PermissionService permissionSvc;
+
     /** 数仓单位名 → sys_college 名（归一化） */
     private static final Map<String, String> NAME_FIX = new HashMap<>();
     static {
@@ -92,7 +95,16 @@ public class CollegeSyncServiceImpl implements CollegeSyncService {
     @Override
     public SysUser syncIfNeeded(SysUser user, boolean force) {
         boolean synced = user.getCollegeSyncedAt() != null;
-        if (!force && (user.getCollegeId() != null || synced)) return user;
+        if (!force && (user.getCollegeId() != null || synced)) {
+            // 已同步用户：辅导员权限补跑（幂等）——存量账号在权限体系上线前已同步，
+            // 不会走 applyDetection 里的授权分支，这里补齐（数仓不可达时静默跳过）
+            try {
+                grantFdyPermsAndEvict(user);
+            } catch (Exception e) {
+                log.debug("fdy perm backfill skipped for {}: {}", user.getUsername(), e.getMessage());
+            }
+            return user;
+        }
         try {
             applyDetection(user);
         } catch (Exception e) {
@@ -176,7 +188,8 @@ public class CollegeSyncServiceImpl implements CollegeSyncService {
         log.info("college sync: {} -> collegeId={} ({})", user.getUsername(), cid, detected);
     }
 
-    private void grantFdyPerms(SysUser user) {
+    private boolean grantFdyPerms(SysUser user) {
+        boolean fdyGranted = false;
         try {
             JdbcTemplate jt = jt();
             Integer fdy = jt.queryForObject(
@@ -196,10 +209,24 @@ public class CollegeSyncServiceImpl implements CollegeSyncService {
                     }
                 }
                 log.info("college sync: {} is fdy, insight perms granted", user.getUsername());
+                fdyGranted = true;
             }
         } catch (Exception e) {
             log.warn("fdy perm grant failed for {}: {}", user.getUsername(), e.getMessage());
         }
+        return fdyGranted;
+    }
+
+    /** 登录链调用：辅导员授权有新插入时清权限缓存 */
+    public boolean grantFdyPermsAndEvict(com.wxut.agentplaza.entity.SysUser user) {
+        boolean granted = grantFdyPerms(user);
+        if (granted) {
+            try {
+                permissionSvc.evict(user.getId());
+            } catch (Exception ignore) {
+            }
+        }
+        return granted;
     }
 
     private boolean isCollegeName(String name) {
