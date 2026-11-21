@@ -101,14 +101,13 @@ public class FormFillService {
         // 阶段 2：检索数仓
         send(emitter, evt("stage", "stage", "fetch", "state", "live", "text", "正在检索教师数据仓…"));
         Map<String, Object> profile = warehouse.getProfile(record.getTeacherId(), record.getTeacherName());
-        boolean fb = Boolean.TRUE.equals(profile.get("_fallback"));
-        if (fb) {
-            record.setTeacherId(str(profile.get("zgh")));
-            record.setTeacherName(str(profile.get("name")));
-        }
+        boolean down = Boolean.TRUE.equals(profile.get("_down"));
+        boolean nomatch = Boolean.TRUE.equals(profile.get("_nomatch"));
+        boolean fb = down || nomatch;
         send(emitter, evt("stage", "stage", "fetch", "state", "done", "text",
-                "已命中 " + profile.get("name") + "（工号 " + profile.get("zgh") + "）· 教职工 / 学历 / 科研 / 评价 / 考核"
-                        + (fb ? " · 数仓暂不可达，使用本地快照" : "")));
+                down ? "教职工数仓暂不可达 · 数仓直填字段本次留空，请在下一步手动补充"
+                : nomatch ? "工号 " + record.getTeacherId() + " 未在教职工数仓命中 · 数仓直填字段请手动补充"
+                : "已命中 " + profile.get("name") + "（工号 " + profile.get("zgh") + "）· 教职工 / 学历 / 科研 / 评价 / 考核"));
 
         // 阶段 3：生成内容
         send(emitter, evt("stage", "stage", "generate", "state", "live", "text", "直填结构化字段…"));
@@ -305,7 +304,7 @@ public class FormFillService {
     private Map<String, Object> fieldEvent(int index, Map<String, Object> f, boolean fallback) {
         String basis = str(f.get("basis"));
         if (fallback && !"need".equals(str(f.get("src"))) && !basis.isEmpty()) {
-            basis += "（数仓暂不可达，已使用本地快照）";
+            basis += "（数仓本次未提供，请人工核对）";
         }
         Map<String, Object> e = evt("field", "index", index);
         e.put("label", f.get("label"));

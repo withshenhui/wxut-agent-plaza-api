@@ -21,7 +21,7 @@ import java.util.Properties;
 /**
  * 智能填报-教师数据仓访问（usr_gxai.datav，只读）。
  * 查询口径与 mcp-wxut-main 教师线工具保持一致（CDC 快照排除 dke_op_type='d'）。
- * 数仓不可达时回落本地快照（3 名示范教师），保证流程可用并在 basis 中如实标注。
+ * 数仓不可达/未命中本人时返回空档案并显式标记，绝不回落到演示或他人数据。
  */
 @Slf4j
 @Service
@@ -50,7 +50,8 @@ public class FormWarehouseService {
         ZC_INFER.put("014", "助教"); ZC_INFER.put("082", "高级工程师"); ZC_INFER.put("083", "工程师");
         RYZT.put("on", "在岗"); RYZT.put("quit", "离职"); RYZT.put("retire", "退休");
         GENDER.put("1", "男"); GENDER.put("2", "女");
-        XL_INFER.put("11", "博士研究生"); XL_INFER.put("12", "硕士研究生");
+        XL_INFER.put("11", "博士研究生"); XL_INFER.put("12", "硕士研究生"); XL_INFER.put("14", "研究生");
+        XL_INFER.put("15", "第二学士学位");
         XL_INFER.put("21", "大学本科"); XL_INFER.put("31", "大学专科");
         XW_INFER.put("1", "博士"); XW_INFER.put("2", "硕士"); XW_INFER.put("3", "学士");
         KHJG_INFER.put("01", "优秀"); KHJG_INFER.put("02", "合格"); KHJG_INFER.put("03", "基本合格");
@@ -70,6 +71,8 @@ public class FormWarehouseService {
     }
 
     private Connection conn() throws Exception {
+        // 共享 Tomcat 下驱动 jar 在 webapp 类加载器里，DriverManager 的 ServiceLoader 扫描不可达，必须显式加载
+        Class.forName("org.postgresql.Driver");
         Properties p = new Properties();
         p.setProperty("user", cfg("formagent.warehouse.user", DEFAULT_USER));
         p.setProperty("password", cfg("formagent.warehouse.password", DEFAULT_PASS));
@@ -91,8 +94,7 @@ public class FormWarehouseService {
     /** 按姓名/工号检索教师（返回列表：zgh/xm/gender/zc/status/关键字段摘要） */
     public List<Map<String, Object>> searchTeachers(String keyword) {
         String kw = keyword == null ? "" : keyword.trim();
-        if (kw.isEmpty()) return demoSearch("");
-        if (degraded()) return demoSearch(kw);
+        if (degraded()) return new ArrayList<>();
         try (Connection c = conn()) {
             PreparedStatement ps = c.prepareStatement(
                     "SELECT zgh, xm, xbdm, nl, zyjszwdm, ryzt FROM " + SCHEMA + "t_jzg " +
@@ -115,14 +117,16 @@ public class FormWarehouseService {
             return out;
         } catch (Exception e) {
             markDegraded(e);
-            return demoSearch(kw);
+            return new ArrayList<>();
         }
     }
 
-    /** 教师 360 档案：返回以规范字段 key 索引的事实数据（含叙述所需的原始事实） */
+    /** 教师 360 档案：返回以规范字段 key 索引的事实数据（含叙述所需的原始事实）。
+     *  失败语义：数仓不可达/未命中本人时返回空档案并带 _down/_nomatch 标记，
+     *  绝不回落到任何演示或他人数据（本人考核表不能出现别人的信息）。 */
     public Map<String, Object> getProfile(String zgh, String name) {
         if (zgh == null || zgh.trim().isEmpty()) zgh = "";
-        if (degraded()) return demoProfile(zgh, name);
+        if (degraded()) return emptyProfile(zgh, name, true, false);
         try (Connection c = conn()) {
             String id = zgh;
             String nm = name == null ? "" : name.trim();
@@ -132,15 +136,31 @@ public class FormWarehouseService {
                         "ORDER BY (ryzt='on') DESC LIMIT 2");
                 ps.setString(1, nm);
                 ResultSet rs = ps.executeQuery();
-                if (!rs.next()) throw new IllegalStateException("未找到姓名为「" + nm + "」的教职工");
+                if (!rs.next()) return emptyProfile("", nm, false, true);
                 id = s(rs, "zgh");
-                if (rs.next()) throw new IllegalStateException("姓名「" + nm + "」命中多名教职工，请用工号精确指定");
+                if (rs.next()) return emptyProfile("", nm, false, true);
             }
-            return loadProfile(c, id);
+            try {
+                return loadProfile(c, id);
+            } catch (IllegalStateException e) {
+                // 工号未命中属正常业务结果，不进入降级窗口
+                return emptyProfile(id, name, false, true);
+            }
         } catch (Exception e) {
             markDegraded(e);
-            return demoProfile(zgh, name);
+            return emptyProfile(zgh, name, true, false);
         }
+    }
+
+    /** 空档案：保留 zgh/name 供前端展示，其余键缺省为空 */
+    private Map<String, Object> emptyProfile(String zgh, String name, boolean down, boolean nomatch) {
+        Map<String, Object> p = new LinkedHashMap<>();
+        p.put("zgh", zgh == null ? "" : zgh);
+        p.put("name", name == null ? "" : name);
+        p.put("_fallback", down || nomatch);
+        p.put("_down", down);
+        p.put("_nomatch", nomatch);
+        return p;
     }
 
     private Map<String, Object> loadProfile(Connection c, String zgh) throws Exception {
@@ -184,7 +204,7 @@ public class FormWarehouseService {
         // 论文
         p.put("lwF", count(c, "SELECT count(*) FROM " + SCHEMA + "t_kyxt_lw WHERE dyzzgh = ? AND dke_op_type <> 'd'", zgh));
         p.put("lwA", count(c, "SELECT count(*) FROM " + SCHEMA + "t_kyxt_lw l WHERE l.dke_op_type <> 'd' AND " +
-                "(l.dyzzgh = ? OR EXISTS (SELECT 1 FROM " + SCHEMA + "t_kyxt_kylwzz a WHERE a.lwbh = l.lwbh AND a.zzxm = ?))", zgh, nm));
+                "(l.dyzzgh = ? OR EXISTS (SELECT 1 FROM " + SCHEMA + "t_kyxt_kylwzz a WHERE a.lwbh = l.wid AND a.zzxm = ?))", zgh, nm));
         List<String> lws = new ArrayList<>();
         try (PreparedStatement ps = c.prepareStatement(
                 "SELECT lwmc, kwmc, fbsj::date fbsj FROM " + SCHEMA + "t_kyxt_lw " +
@@ -221,9 +241,10 @@ public class FormWarehouseService {
                 "WHERE d.dke_op_type <> 'd' AND d.xmbh IN " +
                 "(SELECT id FROM " + SCHEMA + "t_kyxt_hxxm WHERE fzrxm = ? AND dke_op_type <> 'd')", nm));
         // 教学评价（近三年）
-        p.put("pjS", avgScore(c, "SELECT xpf FROM " + SCHEMA + "t_zkxt_xspj WHERE jgh = ? AND xnxq >= to_char(now() - interval '3 year', 'YYYY')", zgh));
-        p.put("pjD", avgScore(c, "SELECT pjzf FROM " + SCHEMA + "t_zkxt_dd WHERE jgh = ? AND skrq >= now() - interval '3 year'", zgh));
-        p.put("pjT", avgScore(c, "SELECT pjzf FROM " + SCHEMA + "t_zkxt_tx WHERE jgh = ? AND skrq >= now() - interval '3 year'", zgh));
+        p.put("pjS", avgScore(c, "SELECT zpf FROM " + SCHEMA + "t_zkxt_xspj WHERE jgh = ? AND xnxq >= to_char(now() - interval '3 year', 'YYYY')", zgh));
+        // skrq 是 varchar（含 '-' 脏值），用字符串比较
+        p.put("pjD", avgScore(c, "SELECT pjzf FROM " + SCHEMA + "t_zkxt_dd WHERE jgh = ? AND skrq >= to_char(now() - interval '3 year', 'YYYY-MM-DD')", zgh));
+        p.put("pjT", avgScore(c, "SELECT pjzf FROM " + SCHEMA + "t_zkxt_tx WHERE jgh = ? AND skrq >= to_char(now() - interval '3 year', 'YYYY-MM-DD')", zgh));
         // 考核
         try (PreparedStatement ps = c.prepareStatement(
                 "SELECT khnd, khjg FROM " + SCHEMA + "t_jzg_kh WHERE jsgh = ? AND dke_op_type <> 'd' " +
@@ -293,83 +314,8 @@ public class FormWarehouseService {
 
     private void markDegraded(Exception e) {
         degradedUntil = System.currentTimeMillis() + 60_000L;
-        log.warn("智能填报：数仓不可达，60s 内使用本地快照。原因：{}", e.getMessage());
-    }
-
-    // ================= 本地快照回落 =================
-
-    private List<Map<String, Object>> demoSearch(String kw) {
-        List<Map<String, Object>> out = new ArrayList<>();
-        for (Map<String, Object> p : demoProfiles()) {
-            String nm = String.valueOf(p.get("name"));
-            String zg = String.valueOf(p.get("zgh"));
-            if (kw == null || kw.isEmpty() || nm.contains(kw) || zg.contains(kw)) {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("zgh", zg); m.put("name", nm);
-                m.put("gender", p.get("gender")); m.put("age", p.get("age"));
-                m.put("zc", p.get("zc")); m.put("status", "在岗");
-                out.add(m);
-            }
-        }
-        return out;
-    }
-
-    private Map<String, Object> demoProfile(String zgh, String name) {
-        for (Map<String, Object> p : demoProfiles()) {
-            boolean idHit = zgh != null && !zgh.trim().isEmpty() && zgh.trim().equals(p.get("zgh"));
-            boolean nmHit = name != null && !name.trim().isEmpty() && name.trim().equals(p.get("name"));
-            if (idHit || (zgh == null || zgh.trim().isEmpty()) && nmHit) {
-                Map<String, Object> copy = new LinkedHashMap<>(p);
-                copy.put("_fallback", true);
-                return copy;
-            }
-        }
-        Map<String, Object> p = new LinkedHashMap<>(demoProfiles().get(0));
-        p.put("_fallback", true);
-        return p;
-    }
-
-    private List<Map<String, Object>> demoProfiles() {
-        List<Map<String, Object>> list = new ArrayList<>();
-        list.add(profile(new Object[][]{
-                {"zgh", "20193058"}, {"name", "陈立群"}, {"gender", "男"}, {"age", 47}, {"birth", "1978-03"},
-                {"mz", "汉族"}, {"zc", "教授"}, {"status", "在岗"}, {"since", "2003-07"}, {"cur", ""},
-                {"xl", "博士研究生"}, {"xw", "工学博士"}, {"xx", "上海交通大学"}, {"zy", "机械制造及其自动化"}, {"xwTime", "2009-06"},
-                {"lwF", 23}, {"lwA", 31}, {"zlF", 8}, {"zlJ", 5}, {"hxF", 4}, {"hxJ", 3}, {"zxJ", 6},
-                {"jf", "187.6"}, {"rjzz", 3}, {"zz", 1}, {"jg", ""},
-                {"pjS", "94.2"}, {"pjD", "92.0"}, {"pjT", "91.5"},
-                {"kh2024", "优秀"}, {"kh2023", "合格"}, {"kh2022", "合格"},
-                {"lws1", "基于数字孪生的复杂曲面加工误差自适应补偿方法 · 《机械工程学报》 · 2025"},
-                {"lws2", "面向薄壁件高速铣削的颤振在线抑制策略 · 《中国机械工程》 · 2024"},
-                {"lws3", "Digital-twin driven process planning for complex thin-walled parts · 《Robotics and Computer-Integrated Manufacturing》 · 2024"}}));
-        list.add(profile(new Object[][]{
-                {"zgh", "20210773"}, {"name", "林晚晴"}, {"gender", "女"}, {"age", 37}, {"birth", "1989-11"},
-                {"mz", "汉族"}, {"zc", "副教授"}, {"status", "在岗"}, {"since", "2015-07"}, {"cur", "系主任助理"},
-                {"xl", "博士研究生"}, {"xw", "工学博士"}, {"xx", "东南大学"}, {"zy", "信息与通信工程"}, {"xwTime", "2018-06"},
-                {"lwF", 11}, {"lwA", 15}, {"zlF", 3}, {"zlJ", 2}, {"hxF", 1}, {"hxJ", 2}, {"zxJ", 3},
-                {"jf", "42.3"}, {"rjzz", 2}, {"zz", 0}, {"jg", ""},
-                {"pjS", "96.8"}, {"pjD", "93.5"}, {"pjT", "92.0"},
-                {"kh2024", "合格"}, {"kh2023", "优秀"}, {"kh2022", "合格"},
-                {"lws1", "工业物联网边缘计算资源协同调度方法 · 《通信学报》 · 2025"},
-                {"lws2", "面向智能产线的多源异构数据融合框架 · 《仪器仪表学报》 · 2024"},
-                {"lws3", "Edge intelligence for smart factory: a survey · 《Journal of Industrial Information Integration》 · 2024"}}));
-        list.add(profile(new Object[][]{
-                {"zgh", "20150412"}, {"name", "周明远"}, {"gender", "男"}, {"age", 41}, {"birth", "1985-06"},
-                {"mz", "汉族"}, {"zc", "讲师"}, {"status", "在岗"}, {"since", "2012-07"}, {"cur", ""},
-                {"xl", "硕士研究生"}, {"xw", "管理学硕士"}, {"xx", "江南大学"}, {"zy", "工商管理"}, {"xwTime", "2012-06"},
-                {"lwF", 6}, {"lwA", 7}, {"zlF", 2}, {"zlJ", 0}, {"hxF", 0}, {"hxJ", 1}, {"zxJ", 1},
-                {"jf", "8.5"}, {"rjzz", 0}, {"zz", 0}, {"jg", ""},
-                {"pjS", "91.4"}, {"pjD", "89.0"}, {"pjT", "90.0"},
-                {"kh2024", "合格"}, {"kh2023", "合格"}, {"kh2022", "基本合格"},
-                {"lws1", "产教融合背景下智能制造管理人才培养路径研究 · 《职教论坛》 · 2024"},
-                {"lws2", "职业院校企业管理课程混合式教学设计 · 《教育与职业》 · 2023"},
-                {"lws3", ""}}));
-        return list;
-    }
-
-    private static Map<String, Object> profile(Object[][] kv) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        for (Object[] pair : kv) m.put((String) pair[0], pair[1]);
-        return m;
+        log.warn("智能填报：数仓不可达（60s 降级窗口），本次返回空档案由用户手动补充。原因：{}", e.getMessage());
     }
 }
+
+
