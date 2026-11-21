@@ -403,8 +403,12 @@ public class SceneInsightController {
         // 6 参数特殊处理：手动拼
         String tierFilter = tierFilter(level);
         StringBuilder outer = new StringBuilder(tierFilter);
-        if (college != null && !college.isEmpty()) outer.append(" AND college = ").append(q(college));
-        if (q != null && !q.trim().isEmpty()) { String t = q.trim().replace("'", "''"); outer.append(" AND (xgh LIKE '%").append(t).append("%' OR name LIKE '%").append(t).append("%')"); }
+        boolean hasWhere = outer.length() > 0;
+        if (college != null && !college.isEmpty()) {
+            outer.append(hasWhere ? " AND" : " WHERE").append(" college = ").append(q(college));
+            hasWhere = true;
+        }
+        if (q != null && !q.trim().isEmpty()) { String t = q.trim().replace("'", "''"); outer.append(hasWhere ? " AND" : " WHERE").append(" (xgh LIKE '%").append(t).append("%' OR name LIKE '%").append(t).append("%')"); }
         Long total = jt.queryForObject("SELECT COUNT(*) FROM (" + sig + " SELECT * FROM sig" + outer + ") t",
                 Long.class, h1s, h1e, h2s, e, ds, de);
         int offset = (page - 1) * size;
@@ -420,8 +424,15 @@ public class SceneInsightController {
             String level, String college, String q, int page, int size, String selectCols) {
         String tierFilter = tierFilter(level);
         StringBuilder outer = new StringBuilder(tierFilter);
-        if (college != null && !college.isEmpty()) outer.append(" AND college = ").append(q(college));
-        if (q != null && !q.trim().isEmpty()) { String t = q.trim().replace("'", "''"); outer.append(" AND (xgh LIKE '%").append(t).append("%' OR name LIKE '%").append(t).append("%')"); }
+        boolean hasWhere = outer.length() > 0;
+        if (college != null && !college.isEmpty()) {
+            outer.append(hasWhere ? " AND" : " WHERE").append(" college = ").append(q(college));
+            hasWhere = true;
+        }
+        if (q != null && !q.trim().isEmpty()) {
+            String t = q.trim().replace("'", "''");
+            outer.append(hasWhere ? " AND" : " WHERE").append(" (xgh LIKE '%").append(t).append("%' OR name LIKE '%").append(t).append("%')");
+        }
         Object[] params = p2 != null ? new Object[]{p1, p2} : new Object[]{p1};
         Long total = jt.queryForObject("SELECT COUNT(*) FROM (" + sig + " SELECT * FROM sig" + outer + ") t", Long.class, params);
         int offset = (page - 1) * size;
