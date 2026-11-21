@@ -138,6 +138,9 @@ public class PermissionServiceImpl implements PermissionService {
         Integer cid = (Integer) s.get("collegeId");
         if (cid == null || cid < 0) throw new BusinessException(403, "账号未关联学院，无法使用数据洞察功能，请联系管理员");
         SysCollege c = collegeMapper.selectById(cid);
+        if (c != null && c.getScopeAll() != null && c.getScopeAll() == 1) return null; // scope 分支兜底
+        // 机构号（如机关编制）不含学生数据：明确提示而非空表
+        if (cid == 99) throw new BusinessException(403, "当前账号归属为「非学院机构」，不含学生数据；如属学院业务岗请联系管理员调整学院归属");
         return c != null ? c.getName() : null;
     }
 
