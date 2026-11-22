@@ -4,6 +4,6 @@ import com.wxut.agentplaza.common.PageResult;
 import com.wxut.agentplaza.entity.SysOperationLog;
 
 public interface SysOperationLogService {
-    PageResult<SysOperationLog> listLogs(String username, String operation, int page, int size);
+    PageResult<java.util.Map<String, Object>> listLogs(String username, String operation, int page, int size);
     void save(SysOperationLog log);
 }

@@ -2,7 +2,6 @@ package com.wxut.agentplaza.controller;
 
 import com.wxut.agentplaza.common.PageResult;
 import com.wxut.agentplaza.common.Result;
-import com.wxut.agentplaza.entity.SysOperationLog;
 import com.wxut.agentplaza.service.SysOperationLogService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -19,7 +18,7 @@ public class SysOperationLogController {
 
     @GetMapping
     @Operation(summary = "获取操作日志列表")
-    public Result<PageResult<SysOperationLog>> list(@RequestParam(required = false) String username,
+    public Result<PageResult<java.util.Map<String, Object>>> list(@RequestParam(required = false) String username,
                                                      @RequestParam(required = false) String operation,
                                                      @RequestParam(defaultValue = "1") int page,
                                                      @RequestParam(defaultValue = "20") int size) {
