@@ -23,12 +23,6 @@ public class FeedbackController {
 
     private final JdbcTemplate jdbcTemplate;
 
-    @GetMapping
-    @Operation(summary = "反馈页面（免登录）")
-    public String page() {
-        return "forward:/feedback.html";
-    }
-
     @PostMapping
     @Operation(summary = "提交反馈（匿名）")
     public Result<Void> submit(@RequestBody Map<String, String> body) {
