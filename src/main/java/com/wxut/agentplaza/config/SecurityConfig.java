@@ -44,6 +44,8 @@ public class SecurityConfig {
                 .antMatchers(org.springframework.http.HttpMethod.PUT, "/api/v1/feedback/*/status").hasRole("ADMIN")
                 // XixiBuddy 桌面客户端账号协议（token 由控制器自校验，见 DshAccountController）
                 .antMatchers("/auth-api/**", "/api/v0/**", "/dsh/**").permitAll()
+                // 知识库跨服务检索（X-Kb-Token 由控制器校验）
+                .antMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/kb/search").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/agents/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/models/**").permitAll()
