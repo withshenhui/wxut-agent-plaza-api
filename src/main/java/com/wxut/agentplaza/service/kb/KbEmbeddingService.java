@@ -28,7 +28,9 @@ public class KbEmbeddingService {
 
     private static final int CONNECT_TIMEOUT_MS = 8000;
     private static final int READ_TIMEOUT_MS = 60000;
-    private static final int BATCH_LIMIT = 16;
+    // 245 vLLM embedding containers reject multi-input batches (EngineCore 400) —
+    // single-input requests work on both qwen3-embedding-4b and bge-m3. Serialize.
+    private static final int BATCH_LIMIT = 1;
 
     private final SysConfigService configService;
     private final ObjectMapper om = new ObjectMapper();
@@ -63,11 +65,32 @@ public class KbEmbeddingService {
      * Embed texts (batched internally, serial — GPU4 is shared).
      * @return float32 vectors in input order, each 2560 dims.
      */
+    private static final int MAX_CHARS = 4000;
+
     public List<float[]> embed(List<String> texts) throws Exception {
-        List<float[]> out = new ArrayList<float[]>(texts.size());
-        for (int i = 0; i < texts.size(); i += BATCH_LIMIT) {
-            List<String> part = texts.subList(i, Math.min(i + BATCH_LIMIT, texts.size()));
-            out.addAll(embedBatch(part));
+        List<String> safe = new ArrayList<String>(texts.size());
+        for (String t : texts) {
+            if (t == null) t = "";
+            safe.add(t.length() > MAX_CHARS ? t.substring(0, MAX_CHARS) : t);
+        }
+        List<float[]> out = new ArrayList<float[]>(safe.size());
+        for (int i = 0; i < safe.size(); i += BATCH_LIMIT) {
+            List<String> part = safe.subList(i, Math.min(i + BATCH_LIMIT, safe.size()));
+            try {
+                out.addAll(embedBatch(part));
+            } catch (Exception batchErr) {
+                // isolate: retry one by one, skip only truly-broken texts
+                for (String t : part) {
+                    float[] v = null;
+                    for (int attempt = 0; attempt < 2 && v == null; attempt++) {
+                        try {
+                            if (attempt > 0) Thread.sleep(300);
+                            v = embedBatch(java.util.Collections.singletonList(t)).get(0);
+                        } catch (Exception one) { if (attempt == 1) log0(one); }
+                    }
+                    out.add(v != null ? v : new float[]{0f});
+                }
+            }
         }
         return out;
     }
@@ -109,6 +132,10 @@ public class KbEmbeddingService {
             vectors.add(v);
         }
         return vectors;
+    }
+
+    private static void log0(Exception e) {
+        System.err.println("[kb-embed] single embed failed after retry: " + e.getMessage());
     }
 
     /** float32 little-endian BLOB for MySQL. */

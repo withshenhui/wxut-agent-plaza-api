@@ -60,11 +60,26 @@ public class KbMigrationService implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
+        boolean backfill = false;
+        try {
+            String v = configService.getByKey("kb.migrate.backfill").getConfigValue();
+            backfill = "true".equals(v == null ? "" : v.trim());
+        } catch (Exception ignore) {}
         boolean enabled = false;
         try {
             String v = configService.getByKey("kb.migrate.enabled").getConfigValue();
             enabled = "true".equals(v == null ? "" : v.trim());
         } catch (Exception ignore) {}
+        if (backfill) {
+            try {
+                backfillZeroVectors();
+                setFlag("kb.migrate.backfill", "false");
+                log.info("kb backfill finished OK");
+            } catch (Exception e) {
+                log.error("kb backfill failed (flag kept)", e);
+            }
+            return;
+        }
         if (!enabled) return;
         try {
             migrate();
@@ -73,6 +88,28 @@ public class KbMigrationService implements ApplicationRunner {
         } catch (Exception e) {
             log.error("kb migration failed (flag kept for retry)", e);
         }
+    }
+
+    /** Re-embed chunks whose stored vector is the 4-byte zero placeholder. */
+    void backfillZeroVectors() throws Exception {
+        List<KbChunk> bad = chunkMapper.selectList(new QueryWrapper<KbChunk>()
+                .apply("LENGTH(embedding) <= 4"));
+        log.info("kb backfill: {} zero-vector chunks to re-embed", bad.size());
+        int fixed = 0, failed = 0;
+        for (KbChunk c : bad) {
+            try {
+                List<float[]> v = embedding.embed(java.util.Collections.singletonList(c.getContent()));
+                if (v.get(0).length <= 1) { failed++; continue; }
+                c.setEmbedding(KbEmbeddingService.toBlob(v.get(0)));
+                chunkMapper.updateById(c);
+                fixed++;
+                if (fixed % 200 == 0) log.info("kb backfill progress: {}/{}", fixed, bad.size());
+            } catch (Exception e) {
+                failed++;
+            }
+        }
+        VectorCache.invalidateAll();
+        log.info("kb backfill done: fixed={} failed={}", fixed, failed);
     }
 
     void migrate() throws Exception {
@@ -221,8 +258,12 @@ public class KbMigrationService implements ApplicationRunner {
     }
 
     private void setFlag(String v) {
+        setFlag("kb.migrate.enabled", v);
+    }
+
+    private void setFlag(String key, String v) {
         try {
-            configService.updateByKey("kb.migrate.enabled", v);
+            configService.updateByKey(key, v);
         } catch (Exception ignore) {}
     }
 }

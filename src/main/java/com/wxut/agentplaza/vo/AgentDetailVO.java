@@ -6,6 +6,9 @@ import java.util.List;
 @Data
 public class AgentDetailVO {
     private Long id;
+
+    /** external | native-chat | native-rag */
+    private String agentType;
     private String name;
     private String icon;
     private String description;

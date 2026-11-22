@@ -41,6 +41,12 @@ public final class VectorCache {
         }
     }
 
+    public static void invalidateAll() {
+        synchronized (CACHE) {
+            CACHE.clear();
+        }
+    }
+
     public interface Loader {
         List<Entry> load();
     }
