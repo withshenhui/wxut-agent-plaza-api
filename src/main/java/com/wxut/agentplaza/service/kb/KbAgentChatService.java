@@ -69,9 +69,9 @@ public class KbAgentChatService {
                 return;
             }
 
-            // 寒暄/闲聊判断：规则先快速短路（你好/你是谁/能干什么等），未命中再走 LLM 分类
+            // 寒暄/闲聊判断：纯规则（LLM 分类一次往返 10s+ 拖慢首字，弃用；未命中按知识问题处理最坏只是多查一次库）
             String agentName = agent.getName() == null ? "制度助手" : agent.getName();
-            if (isChitchatFast(q) || isChitchat(agentName, agent.getDescription(), q, llm)) {
+            if (isChitchatFast(q)) {
                 emitter.send(SseEmitter.event().name("tool")
                         .data("{\"message\":\"思考中…\"}"));
                 String casual = casualReply(agentName, agent.getDescription(), q, llm);
