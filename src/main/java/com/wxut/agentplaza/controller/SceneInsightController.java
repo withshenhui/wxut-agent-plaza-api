@@ -292,18 +292,34 @@ public class SceneInsightController {
         return Result.success(mentalStudentsImpl(jt, half1s, half1e, half2s, e, ds, de, level, college, q, page, size));
     }
 
-    /* ---------- 详情：未归明细 + 请假交叉（safety/mental 共用） ---------- */
+    /* ---------- 详情：学生档案 + 分维度核验数据包 ---------- */
 
+    /** 政治面貌/民族代码 → 中文（t_bzks 存代码） */
+    private static String zzmmOf(String dm) {
+        if (dm == null) return null;
+        switch (dm) { case "01": return "中共党员"; case "02": return "中共预备党员"; case "03": return "共青团员";
+            case "13": return "群众"; default: return dm; }
+    }
+
+    private static String nz(Object v) { return v == null ? "" : String.valueOf(v).trim(); }
+
+    /**
+     * 学生详情（四工作台共用）。
+     * profile：学籍档案（籍贯/生源/通讯地址/民族/政治面貌/出生，t_bzks 覆盖约 43%，缺省不返回）。
+     * 按维度返回差异化核验数据：safety/mental=未归明细+请假交叉；academic=单科成绩明细；
+     * funding/mental=食堂消费趋势（判断消费变化是行为骤变还是长期习惯）。
+     */
     @GetMapping("/detail")
-    @Operation(summary = "学生未归明细 + 请假交叉核验")
-    public Result<Map<String, Object>> detail(Authentication auth, @RequestParam String studentId, @RequestParam(defaultValue = "30") int windowDays) {
-        // safety 或 mental 任一权限即可看明细
+    @Operation(summary = "学生详情：档案 + 维度核验数据")
+    public Result<Map<String, Object>> detail(Authentication auth, @RequestParam String studentId,
+            @RequestParam(defaultValue = "30") int windowDays,
+            @RequestParam(required = false, defaultValue = "scene") String view) {
         Long uid = (Long) auth.getPrincipal();
-        if (!permissionService.has(uid, "insight.safety") && !permissionService.has(uid, "insight.mental")) {
+        if (!permissionService.has(uid, "insight.safety") && !permissionService.has(uid, "insight.mental")
+                && !permissionService.has(uid, "insight.academic") && !permissionService.has(uid, "insight.funding")) {
             throw new com.wxut.agentplaza.exception.BusinessException(403, "无权使用该功能，如需开通请联系管理员");
         }
         JdbcTemplate jt = jt();
-        // 数据范围：college 范围校验该学生属于本人学院
         String only = scoped(auth, null);
         if (only != null) {
             List<String> belongs = jt.queryForList(
@@ -314,46 +330,95 @@ public class SceneInsightController {
                 throw new com.wxut.agentplaza.exception.BusinessException(403, "该学生不在您所在学院的数据范围内");
             }
         }
+        Map<String, Object> r = new HashMap<>();
+
+        /* 学籍档案（t_bzks，字段可空率高，有值才返回） */
+        List<Map<String, Object>> prof = jt.queryForList(
+                "SELECT jgdm, syszd, txdz, mzdm, zzmmdm, csrq::text FROM usr_gxai.t_bzks" +
+                " WHERE xh = ? AND dke_op_type <> 'c' AND (jgdm IS NOT NULL OR syszd IS NOT NULL OR txdz IS NOT NULL) LIMIT 1", studentId);
+        if (!prof.isEmpty()) {
+            Map<String, Object> p = new HashMap<>();
+            Map<String, Object> row = prof.get(0);
+            String jg = nz(row.get("jgdm")); if (!jg.isEmpty()) p.put("jg", jg);
+            String sy = nz(row.get("syszd")); if (!sy.isEmpty()) p.put("sy", sy);
+            String tx = nz(row.get("txdz")); if (!tx.isEmpty()) p.put("tx", tx);
+            String mz = nz(row.get("mzdm")); if (!mz.isEmpty()) p.put("mz", "01".equals(mz) ? "汉族" : mz);
+            String zz = zzmmOf(nz(row.get("zzmmdm"))); if (zz != null) p.put("zz", zz);
+            String cs = nz(row.get("csrq")); if (!cs.isEmpty() && !"1900-01-01".equals(cs)) p.put("cs", cs);
+            if (!p.isEmpty()) r.put("profile", p);
+        }
+        /* 宿舍信息（宿管最新日） */
+        List<Map<String, Object>> dorm = jt.queryForList(
+                "SELECT jzwmc, lcmc, fjmc FROM usr_gxai.t_zhsg_xskq WHERE xh = ? AND date = (SELECT max(date) FROM usr_gxai.t_zhsg_xskq) LIMIT 1", studentId);
+        if (!dorm.isEmpty() && dorm.get(0).get("fjmc") != null) {
+            Map<String, Object> d = dorm.get(0);
+            r.put("dorm", nz(d.get("jzwmc")) + " " + nz(d.get("lcmc")) + " " + nz(d.get("fjmc")));
+        }
+
         LocalDate dEnd = latestDormDate(jt);
         LocalDate dStart = dEnd.minusDays(windowDays);
         String ds = dStart.format(D), de = dEnd.plusDays(1).format(D);
 
-        // 未归/晚归明细
-        List<Map<String, Object>> nights = jt.queryForList(
-                "SELECT date, time, state FROM usr_gxai.t_zhsg_xskq" +
-                " WHERE xh = ? AND date >= ? AND date < ? AND (state = '6' OR (state <> '6' AND time >= '2230'))" +
-                " ORDER BY date DESC", studentId, ds, de);
-
-        // 观察窗内相关请假（有效行 c；kssj/jssj 是 timestamp with tz，取 ::date 比较）
-        List<Map<String, Object>> leaves = jt.queryForList(
-                "SELECT kssj::date AS start_date, jssj::date AS end_date, qjlx, left(wcsy, 30) AS reason" +
-                " FROM usr_gxai.t_yzsfw_xsqjb WHERE xh = ? AND dke_op_type = 'c'" +
-                " AND jssj >= ? AND kssj <= ?" +
-                " ORDER BY kssj DESC LIMIT 20", studentId, ds + " 00:00", de + " 23:59");
-
-        // 交叉：每个未归日是否在请假区间内
-        java.util.Set<String> leaveDays = new java.util.HashSet<>();
-        for (Map<String, Object> lv : leaves) {
-            LocalDate st = LocalDate.parse(String.valueOf(lv.get("start_date")).substring(0, 10));
-            LocalDate en = LocalDate.parse(String.valueOf(lv.get("end_date")).substring(0, 10));
-            for (LocalDate d = st; !d.isAfter(en); d = d.plusDays(1)) leaveDays.add(d.toString());
+        /* safety/mental：未归明细 + 请假交叉（原有逻辑） */
+        boolean wantNights = "safety".equals(view) || "mental".equals(view) || "scene".equals(view);
+        if (wantNights) {
+            List<Map<String, Object>> nights = jt.queryForList(
+                    "SELECT date, time, state FROM usr_gxai.t_zhsg_xskq" +
+                    " WHERE xh = ? AND date >= ? AND date < ? AND (state = '6' OR (state <> '6' AND time >= '2230'))" +
+                    " ORDER BY date DESC", studentId, ds, de);
+            List<Map<String, Object>> leaves = jt.queryForList(
+                    "SELECT kssj::date AS start_date, jssj::date AS end_date, qjlx, left(wcsy, 30) AS reason" +
+                    " FROM usr_gxai.t_yzsfw_xsqjb WHERE xh = ? AND dke_op_type = 'c'" +
+                    " AND jssj >= ? AND kssj <= ?" +
+                    " ORDER BY kssj DESC LIMIT 20", studentId, ds + " 00:00", de + " 23:59");
+            java.util.Set<String> leaveDays = new java.util.HashSet<>();
+            for (Map<String, Object> lv : leaves) {
+                LocalDate st = LocalDate.parse(String.valueOf(lv.get("start_date")).substring(0, 10));
+                LocalDate en = LocalDate.parse(String.valueOf(lv.get("end_date")).substring(0, 10));
+                for (LocalDate d = st; !d.isAfter(en); d = d.plusDays(1)) leaveDays.add(d.toString());
+            }
+            int matched = 0, unmatched = 0;
+            List<Map<String, Object>> rowsOut = new java.util.ArrayList<>();
+            for (Map<String, Object> n : nights) {
+                String d = String.valueOf(n.get("date"));
+                boolean onLeave = leaveDays.contains(d.length() > 10 ? d.substring(0, 10) : d);
+                if (onLeave) matched++; else unmatched++;
+                Map<String, Object> row = new HashMap<>(n);
+                row.put("onLeave", onLeave);
+                rowsOut.add(row);
+            }
+            r.put("nights", rowsOut);
+            r.put("leaves", leaves);
+            r.put("matched", matched);
+            r.put("unmatched", unmatched);
         }
-        int matched = 0, unmatched = 0;
-        List<Map<String, Object>> rowsOut = new java.util.ArrayList<>();
-        for (Map<String, Object> n : nights) {
-            String d = String.valueOf(n.get("date"));
-            boolean onLeave = leaveDays.contains(d.length() > 10 ? d.substring(0, 10) : d);
-            if (onLeave) matched++; else unmatched++;
-            Map<String, Object> row = new HashMap<>(n);
-            row.put("onLeave", onLeave);
-            rowsOut.add(row);
+
+        /* academic：单科成绩明细（最新有数学期） */
+        if ("academic".equals(view) || "scene".equals(view)) {
+            List<String> terms = jt.queryForList(
+                    "SELECT xq FROM usr_gxai.t_jw_xscjjd WHERE xh = ? AND dke_op_type <> 'c' AND cj IS NOT NULL ORDER BY xq DESC LIMIT 1", String.class, studentId);
+            if (!terms.isEmpty()) {
+                String term = terms.get(0);
+                List<Map<String, Object>> scores = jt.queryForList(
+                        "SELECT kcmc, kclb, cj, xf FROM usr_gxai.t_jw_xscjjd" +
+                        " WHERE xh = ? AND xq = ? AND dke_op_type <> 'c' AND cj IS NOT NULL ORDER BY kcmc", studentId, term);
+                r.put("term", term);
+                r.put("scores", scores);
+            }
         }
 
-        Map<String, Object> r = new HashMap<>();
-        r.put("nights", rowsOut);
-        r.put("leaves", leaves);
-        r.put("matched", matched);
-        r.put("unmatched", unmatched);
+        /* funding/mental：食堂消费趋势（按周聚合，观察窗内） */
+        if ("funding".equals(view) || "mental".equals(view) || "scene".equals(view)) {
+            LocalDate cEnd = latestConsumptionDate(jt);
+            String cs2 = cEnd.minusDays(windowDays).format(D), ce2 = cEnd.plusDays(1).format(D);
+            List<Map<String, Object>> trend = jt.queryForList(
+                    "SELECT to_char(" + BJ + " - interval '3 day', 'IW') AS wk," +
+                    " COUNT(*) AS meals, ROUND(SUM(xfzze)/100.0) AS amt" +
+                    " FROM usr_gxai.t_ykt_jkb c WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN +
+                    " AND c.xgh = ? GROUP BY 1 ORDER BY 1", cs2, ce2, studentId);
+            r.put("consumption", trend);
+        }
+
         return Result.success(r);
     }
 
