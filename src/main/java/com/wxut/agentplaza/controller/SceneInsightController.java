@@ -62,6 +62,22 @@ public class SceneInsightController {
     private static final String D_MAP =
             "d AS (SELECT xh, yxmc, njmc, xsxm FROM usr_gxai.t_zhsg_xskq WHERE date = (SELECT max(date) FROM usr_gxai.t_zhsg_xskq))";
 
+    /**
+     * 餐厅窗口机口径（2026-11-22 与 FundingInsightController 同步修正）：号段 1/5/6xxx，
+     * 排除 1009 杜鹃园门禁、1010 旧淋浴机、1014/1015 会议签到机、1999 开水机；
+     * 不 join 终端字典（同终端多行登记会翻倍流水）；消费时间为 UTC 须 +8 转北京。
+     */
+    private static final String CANTEEN =
+            "(c.zdbh BETWEEN 1000 AND 1999 OR c.zdbh BETWEEN 5000 AND 6999) AND c.zdbh NOT IN (1009,1010,1014,1015,1999)";
+    private static final String BJ = "(c.zdsdzzsj + interval '8 hour')";
+
+    /** 消费前后半月对比 CTE（?1=前半月起 ?2=前半月止 ?3=后半月起 ?4=后半月止） */
+    private static final String C12 =
+            " c1 AS (SELECT xgh, SUM(xfzze)/100.0 AS s1 FROM usr_gxai.t_ykt_jkb c" +
+            "  WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN + " GROUP BY xgh)," +
+            " c2 AS (SELECT xgh, SUM(xfzze)/100.0 AS s2 FROM usr_gxai.t_ykt_jkb c" +
+            "  WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN + " GROUP BY xgh),";
+
     private LocalDate latestDormDate(JdbcTemplate jt) {
         String d = jt.queryForObject("SELECT max(date) FROM usr_gxai.t_zhsg_xskq", String.class);
         return d != null ? LocalDate.parse(d) : LocalDate.now().minusDays(1);
@@ -213,17 +229,14 @@ public class SceneInsightController {
         r.put("dataDate", cEnd.format(D));
         String sig =
                 "WITH " + D_MAP + "," +
-                " c1 AS (SELECT xgh, SUM(xfzze)/100.0 AS s1 FROM usr_gxai.t_ykt_jkb c LEFT JOIN usr_gxai.t_ykt_zdxx z ON z.zdbh=c.zdbh" +
-                "  WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp AND (z.zdmc LIKE '%餐厅%' OR z.zdmc LIKE '%食堂%') GROUP BY xgh)," +
-                " c2 AS (SELECT xgh, SUM(xfzze)/100.0 AS s2 FROM usr_gxai.t_ykt_jkb c LEFT JOIN usr_gxai.t_ykt_zdxx z ON z.zdbh=c.zdbh" +
-                "  WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp AND (z.zdmc LIKE '%餐厅%' OR z.zdmc LIKE '%食堂%') GROUP BY xgh)," +
+                C12 +
                 " nr AS (SELECT xh AS xgh, COUNT(*) AS no_return FROM usr_gxai.t_zhsg_xskq WHERE date >= ? AND date < ? AND state = '6' GROUP BY xh)," +
                 " sig AS (SELECT COALESCE(c2.xgh, nr.xgh) AS xgh," +
                 "  CASE WHEN c1.s1 > 0 THEN ROUND((c1.s1 - COALESCE(c2.s2,0)) / c1.s1 * 100) ELSE 0 END AS drop_pct," +
                 "  COALESCE(nr.no_return, 0) AS no_return FROM c2" +
                 "  LEFT JOIN c1 ON c1.xgh = c2.xgh LEFT JOIN nr ON nr.xgh = c2.xgh" +
                 "  WHERE (c1.s1 > 0 AND COALESCE(c2.s2,0) < c1.s1 * 0.4) OR nr.no_return >= 5)";
-        r.put("active", jt.queryForObject("SELECT COUNT(DISTINCT c.xgh) FROM usr_gxai.t_ykt_jkb c WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp", Long.class, half1s, e));
+        r.put("active", jt.queryForObject("SELECT COUNT(DISTINCT c.xgh) FROM usr_gxai.t_ykt_jkb c WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp", Long.class, half1s, e));
         Map<String, Object> t = jt.queryForList(sig +
                 " SELECT COUNT(*) AS n_total," +
                 " COUNT(*) FILTER (WHERE drop_pct >= 60 AND no_return >= 3) AS n_hi," +
@@ -247,10 +260,7 @@ public class SceneInsightController {
         String ds = dEnd.minusDays(29).format(D), de = dEnd.plusDays(1).format(D);
         return Result.success(trim(jt.queryForList(
                 "WITH " + D_MAP + "," +
-                " c1 AS (SELECT xgh, SUM(xfzze)/100.0 AS s1 FROM usr_gxai.t_ykt_jkb c LEFT JOIN usr_gxai.t_ykt_zdxx z ON z.zdbh=c.zdbh" +
-                "  WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp AND (z.zdmc LIKE '%餐厅%' OR z.zdmc LIKE '%食堂%') GROUP BY xgh)," +
-                " c2 AS (SELECT xgh, SUM(xfzze)/100.0 AS s2 FROM usr_gxai.t_ykt_jkb c LEFT JOIN usr_gxai.t_ykt_zdxx z ON z.zdbh=c.zdbh" +
-                "  WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp AND (z.zdmc LIKE '%餐厅%' OR z.zdmc LIKE '%食堂%') GROUP BY xgh)," +
+                C12 +
                 " nr AS (SELECT xh AS xgh, COUNT(*) AS no_return FROM usr_gxai.t_zhsg_xskq WHERE date >= ? AND date < ? AND state = '6' GROUP BY xh)," +
                 " sig AS (SELECT COALESCE(c2.xgh, nr.xgh) AS xgh," +
                 "  CASE WHEN c1.s1 > 0 THEN ROUND((c1.s1 - COALESCE(c2.s2,0)) / c1.s1 * 100) ELSE 0 END AS drop_pct," +
@@ -387,10 +397,7 @@ public class SceneInsightController {
             String level, String college, String q, int page, int size) {
         String sig =
                 "WITH " + D_MAP + "," +
-                " c1 AS (SELECT xgh, SUM(xfzze)/100.0 AS s1 FROM usr_gxai.t_ykt_jkb c LEFT JOIN usr_gxai.t_ykt_zdxx z ON z.zdbh=c.zdbh" +
-                "  WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp AND (z.zdmc LIKE '%餐厅%' OR z.zdmc LIKE '%食堂%') GROUP BY xgh)," +
-                " c2 AS (SELECT xgh, SUM(xfzze)/100.0 AS s2 FROM usr_gxai.t_ykt_jkb c LEFT JOIN usr_gxai.t_ykt_zdxx z ON z.zdbh=c.zdbh" +
-                "  WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp AND (z.zdmc LIKE '%餐厅%' OR z.zdmc LIKE '%食堂%') GROUP BY xgh)," +
+                C12 +
                 " nr AS (SELECT xh AS xgh, COUNT(*) AS no_return FROM usr_gxai.t_zhsg_xskq WHERE date >= ? AND date < ? AND state = '6' GROUP BY xh)," +
                 " sig AS (SELECT COALESCE(c2.xgh, nr.xgh) AS xgh, d.xsxm AS name, d.yxmc AS college, d.njmc AS grade," +
                 "  CASE WHEN c1.s1 > 0 THEN ROUND((c1.s1 - COALESCE(c2.s2,0)) / c1.s1 * 100) ELSE 0 END AS drop_pct," +
@@ -454,7 +461,7 @@ public class SceneInsightController {
     private static String q(String v) { return "'" + v.replace("'", "''") + "'"; }
 
     private LocalDate latestConsumptionDate(JdbcTemplate jt) {
-        String d = jt.queryForObject("SELECT MAX(zdsdzzsj)::date::text FROM usr_gxai.t_ykt_jkb", String.class);
+        String d = jt.queryForObject("SELECT MAX(zdsdzzsj + interval '8 hour')::date::text FROM usr_gxai.t_ykt_jkb", String.class);
         return d != null ? LocalDate.parse(d) : LocalDate.now().minusDays(1);
     }
 }

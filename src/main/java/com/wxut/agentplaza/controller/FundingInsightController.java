@@ -15,11 +15,14 @@ import java.util.Map;
 
 /**
  * 精准资助分析（AI 数据洞察 · 工作台）。
- * 只读查询 PG 数仓：消费 t_ykt_jkb（分→元换算，食堂=终端字典 zdmc 含"餐厅/食堂"）
+ * 只读查询 PG 数仓：消费 t_ykt_jkb（分→元换算，餐厅=1/5/6xxx 号段窗口机，见 CANTEEN 注释）
  * + 宿管考勤最新日做学院/年级/姓名映射（t_bzks 无 yxmc/njmc 列）。
  * 口径（南理工"暖心饭卡"模式）：达标=观察窗内食堂就餐 ≥40 顿；
  * 分位=同学院同年级单顿均价 PERCENT_RANK；高 P5 / 中 P5-15 / 观察 P15-40。
- * SQL 已在 91 数仓真实验证（2026-11-20：30 天窗达标 1078 人，三档 74/103/253）。
+ * 2026-11-22 口径修正（三流勘误后重校准，30 天窗达标 827 人，三档 66/72/190）：
+ * ①餐厅识别改号段（原按字典名匹配漏 5 台数字名窗口机≈20% 流水）；
+ * ②不再 join 终端字典（字典同终端多行登记，join 把 1005 等终端流水翻倍，170 人虚增达标）；
+ * ③消费时间为 UTC，+8 转北京后再取窗口与"数据截至"。
  * 权限（2026-11-21 RBAC）：需 insight.funding；数据范围 college 范围强制本人学院。
  */
 @Tag(name = "精准资助分析")
@@ -52,18 +55,30 @@ public class FundingInsightController {
 
     /* ---------- 共享口径 SQL ---------- */
 
+    /**
+     * 餐厅窗口机口径：一/五/六餐厅 = 终端号段 1xxx / 5xxx / 6xxx（t_ykt_zdxx 实名佐证）。
+     * 排除段内非餐饮终端：1009 杜鹃园门禁、1010 旧淋浴机(2221)、1014/1015 会议签到机、1999 开水机。
+     * 不 join 终端字典取名字——字典同一终端有多行登记（如 1005 有 ks26/ks27 两条），
+     * join 会把该终端消费流水整倍翻倍；数字名窗口机（1004/1005/1006/1011/1012）靠号段纳入。
+     */
+    private static final String CANTEEN =
+            "(c.zdbh BETWEEN 1000 AND 1999 OR c.zdbh BETWEEN 5000 AND 6999) AND c.zdbh NOT IN (1009,1010,1014,1015,1999)";
+
+    /** 消费时间 zdsdzzsj 为 UTC，比较前 +8 转北京时间（否则窗口边界与"数据截至"日期偏 8h） */
+    private static final String BJ = "(c.zdsdzzsj + interval '8 hour')";
+
     /** 达标人群（观察窗内食堂就餐 ≥40 顿），?1=start ?2=end */
     private static final String PER_ELIGIBLE =
-            "SELECT c.xgh FROM usr_gxai.t_ykt_jkb c LEFT JOIN usr_gxai.t_ykt_zdxx z ON z.zdbh = c.zdbh" +
-            " WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp AND (z.zdmc LIKE '%餐厅%' OR z.zdmc LIKE '%食堂%')" +
+            "SELECT c.xgh FROM usr_gxai.t_ykt_jkb c" +
+            " WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN +
             " GROUP BY c.xgh HAVING COUNT(*) >= 40";
 
     /** 完整分位 CTE（pct：id/name/college/grade/avg_price/meals/spend/pr），?1=start ?2=end */
     private static final String PER_PCT =
             "WITH d AS (SELECT xh, yxmc, njmc, xsxm FROM usr_gxai.t_zhsg_xskq WHERE date = (SELECT max(date) FROM usr_gxai.t_zhsg_xskq))," +
             "per AS (SELECT c.xgh, ROUND(SUM(c.xfzze)/100.0/COUNT(*),2) AS avg_price, COUNT(*) AS meals, ROUND(SUM(c.xfzze)/100.0,2) AS spend" +
-            "  FROM usr_gxai.t_ykt_jkb c LEFT JOIN usr_gxai.t_ykt_zdxx z ON z.zdbh = c.zdbh" +
-            "  WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp AND (z.zdmc LIKE '%餐厅%' OR z.zdmc LIKE '%食堂%')" +
+            "  FROM usr_gxai.t_ykt_jkb c" +
+            "  WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN +
             "  GROUP BY c.xgh HAVING COUNT(*) >= 40)," +
             "pct AS (SELECT per.*, d.xsxm AS name, d.yxmc AS college, d.njmc AS grade," +
             "  PERCENT_RANK() OVER (PARTITION BY d.yxmc, d.njmc ORDER BY per.avg_price) AS pr" +
@@ -86,7 +101,7 @@ public class FundingInsightController {
         r.put("dataDate", end.format(D));
 
         Long active = jt.queryForObject(
-                "SELECT COUNT(DISTINCT c.xgh) FROM usr_gxai.t_ykt_jkb c WHERE c.zdsdzzsj >= ?::timestamp AND c.zdsdzzsj < ?::timestamp",
+                "SELECT COUNT(DISTINCT c.xgh) FROM usr_gxai.t_ykt_jkb c WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp",
                 Long.class, s, e);
         r.put("active", active);
 
@@ -229,7 +244,7 @@ public class FundingInsightController {
     /* ---------- helpers ---------- */
 
     private LocalDate latestConsumptionDate(JdbcTemplate jt) {
-        String d = jt.queryForObject("SELECT MAX(zdsdzzsj)::date::text FROM usr_gxai.t_ykt_jkb", String.class);
+        String d = jt.queryForObject("SELECT MAX(zdsdzzsj + interval '8 hour')::date::text FROM usr_gxai.t_ykt_jkb", String.class);
         return d != null ? LocalDate.parse(d) : LocalDate.now().minusDays(1);
     }
 
