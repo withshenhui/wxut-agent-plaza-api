@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>意见反馈 · 无锡职业技术大学</title>
+<link rel="icon" type="image/png" sizes="64x64" href="/favicon.ico" />
+<style>
+:root {
+  --ink: #1D2129; --t2: #4E5969; --t3: #86909C; --t4: #C0C6CC;
+  --line: #E5E6EB; --brand: #3370FF; --brand-l1: #EAF0FF; --brand-d: #2558D8;
+  --bg: #F5F6F8; --card: #FFFFFF; --ok: #00B42A; --danger: #F53F3F;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, PingFang SC, Microsoft YaHei, sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+.wrap { width: 100%; max-width: 640px; padding: 32px 20px 60px; }
+.brandbar { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+.brandbar img { width: 36px; height: 36px; object-fit: contain; }
+.brandbar .t { font-size: 16px; font-weight: 600; }
+.card { background: var(--card); border-radius: 12px; padding: 32px 32px 28px; box-shadow: 0 1px 4px rgba(29,33,41,.06); }
+h1 { font-size: 20px; font-weight: 600; }
+.sub { font-size: 13px; color: var(--t3); margin-top: 6px; line-height: 1.6; }
+.fgroup { margin-top: 24px; }
+.fgroup label { display: block; font-size: 14px; font-weight: 500; margin-bottom: 8px; }
+.fgroup label .req { color: var(--danger); margin-left: 2px; }
+select, textarea, input[type=text] { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 14px; color: var(--ink); background: #FFF; outline: none; transition: border-color .15s, box-shadow .15s; font-family: inherit; }
+select:focus, textarea:focus, input[type=text]:focus { border-color: var(--brand); box-shadow: 0 0 0 2px rgba(51,112,255,.12); }
+textarea { min-height: 128px; resize: vertical; line-height: 1.7; }
+select { appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--t3) 50%), linear-gradient(135deg, var(--t3) 50%, transparent 50%); background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; padding-right: 34px; cursor: pointer; }
+.hint { font-size: 12px; color: var(--t4); margin-top: 6px; }
+.envbox { margin-top: 24px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.envhead { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: #F7F8FA; cursor: pointer; user-select: none; }
+.envhead .l { font-size: 13px; color: var(--t2); font-weight: 500; }
+.envhead .arrow { font-size: 12px; color: var(--t3); transition: transform .2s; }
+.envbox.open .envhead .arrow { transform: rotate(90deg); }
+.envbody { display: none; padding: 12px 14px; }
+.envbox.open .envbody { display: block; }
+.envbody .kv { display: flex; font-size: 12.5px; line-height: 2; }
+.envbody .k { width: 96px; color: var(--t3); flex-shrink: 0; }
+.envbody .v { color: var(--t2); word-break: break-all; }
+.submit { margin-top: 28px; width: 100%; height: 44px; background: var(--brand); color: #FFF; border: none; border-radius: 8px; font-size: 15px; font-weight: 500; cursor: pointer; transition: background .15s; }
+.submit:hover { background: var(--brand-d); }
+.submit:disabled { background: #A8C1FF; cursor: not-allowed; }
+.done { display: none; text-align: center; padding: 48px 0 24px; }
+.done .ic { width: 56px; height: 56px; border-radius: 50%; background: var(--ok); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px; }
+.done .ic svg { width: 28px; height: 28px; }
+.done h2 { font-size: 18px; margin-bottom: 8px; }
+.done p { font-size: 13px; color: var(--t3); }
+.done .back { display: inline-block; margin-top: 22px; color: var(--brand); font-size: 14px; cursor: pointer; }
+.err { display: none; margin-top: 16px; background: #FFECE8; border: 1px solid #FDACA5; color: #CB272D; font-size: 13px; border-radius: 8px; padding: 9px 14px; }
+.foot { margin-top: 28px; text-align: center; font-size: 12px; color: var(--t4); line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brandbar">
+    <img src="/favicon.ico" alt="无锡职业技术大学校徽" />
+    <div class="t">无锡职业技术大学 · AI 中台</div>
+  </div>
+  <div class="card" id="formCard">
+    <h1>意见反馈</h1>
+    <p class="sub">你的建议对我们非常重要。提交后会由信息化与数据服务中心（dcc@wxit.edu.cn）跟进处理。</p>
+    <div class="err" id="err"></div>
+    <div class="fgroup">
+      <label>反馈类型</label>
+      <select id="ftype">
+        <option value="功能建议">功能建议</option>
+        <option value="问题报告">问题报告</option>
+        <option value="体验反馈">体验反馈</option>
+        <option value="其他">其他</option>
+      </select>
+    </div>
+    <div class="fgroup">
+      <label>反馈内容<span class="req">*</span></label>
+      <textarea id="content" placeholder="请详细描述你的建议或遇到的问题（可包含操作步骤、截图说明）"></textarea>
+      <div class="hint" id="counter">0 / 2000</div>
+    </div>
+    <div class="fgroup">
+      <label>联系方式（选填）</label>
+      <input type="text" id="contact" placeholder="工号 / 邮箱，方便我们跟进回访" />
+    </div>
+    <div class="envbox" id="envbox">
+      <div class="envhead" onclick="document.getElementById('envbox').classList.toggle('open')">
+        <span class="l">系统信息（自动采集）</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="envbody">
+        <div class="kv"><span class="k">反馈来源</span><span class="v" id="v-source">—</span></div>
+        <div class="kv"><span class="k">客户端版本</span><span class="v" id="v-version">—</span></div>
+        <div class="kv"><span class="k">设备信息</span><span class="v" id="v-device">—</span></div>
+      </div>
+    </div>
+    <button class="submit" id="btn">提 交</button>
+  </div>
+  <div class="done" id="done">
+    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+    <h2>提交成功</h2>
+    <p>感谢你的反馈，我们会尽快跟进处理</p>
+    <span class="back" onclick="resetForm()">再写一条</span>
+  </div>
+  <div class="foot">无锡职业技术大学 信息化与数据服务中心<br />工作日 8:30 – 17:00 · dcc@wxit.edu.cn</div>
+</div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var source = q.get('source') || 'web';
+  var version = q.get('prefill_harness_version') || q.get('version') || '';
+  var ua = q.get('prefill_device_info') || navigator.userAgent;
+  var screenRes = window.screen.width + 'x' + window.screen.height + ' @' + (window.devicePixelRatio || 1) + 'x';
+  var deviceInfo = [ua, 'screen_resolution=' + screenRes].filter(Boolean).join('; ');
+  document.getElementById('v-source').textContent = source;
+  document.getElementById('v-version').textContent = version || '—';
+  document.getElementById('v-device').textContent = deviceInfo;
+
+  var content = document.getElementById('content');
+  var counter = document.getElementById('counter');
+  content.addEventListener('input', function () {
+    if (content.value.length > 2000) content.value = content.value.slice(0, 2000);
+    counter.textContent = content.value.length + ' / 2000';
+  });
+
+  document.getElementById('btn').addEventListener('click', function () {
+    var err = document.getElementById('err');
+    err.style.display = 'none';
+    var text = content.value.trim();
+    if (!text) {
+      err.textContent = '请填写反馈内容';
+      err.style.display = 'block';
+      content.focus();
+      return;
+    }
+    var btn = this;
+    btn.disabled = true;
+    btn.textContent = '提交中…';
+    fetch('/agent-plaza/api/v1/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: source,
+        ftype: document.getElementById('ftype').value,
+        content: text,
+        contact: document.getElementById('contact').value.trim(),
+        version: version,
+        deviceInfo: deviceInfo
+      })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.code === 200) {
+        document.getElementById('formCard').style.display = 'none';
+        document.getElementById('done').style.display = 'block';
+      } else {
+        throw new Error(j.message || '提交失败');
+      }
+    }).catch(function (e) {
+      err.textContent = '提交失败：' + e.message + '，请稍后重试';
+      err.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = '提 交';
+    });
+  });
+
+  window.resetForm = function () {
+    content.value = '';
+    counter.textContent = '0 / 2000';
+    document.getElementById('contact').value = '';
+    document.getElementById('done').style.display = 'none';
+    document.getElementById('formCard').style.display = 'block';
+    document.getElementById('btn').disabled = false;
+    document.getElementById('btn').textContent = '提 交';
+  };
+})();
+</script>
+</body>
+</html>

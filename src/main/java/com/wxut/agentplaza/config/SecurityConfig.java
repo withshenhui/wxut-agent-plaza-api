@@ -38,6 +38,8 @@ public class SecurityConfig {
             .authorizeRequests()
                 .antMatchers("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/cas-login", "/api/v1/auth/cas-login-url", "/api/v1/auth/cas-logout-url").permitAll()
                 .antMatchers("/api/v1/sso/entry", "/api/v1/sso/validate").permitAll()
+                .antMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/feedback").permitAll()
+                .antMatchers("/feedback", "/feedback.html").permitAll()
                 // XixiBuddy 桌面客户端账号协议（token 由控制器自校验，见 DshAccountController）
                 .antMatchers("/auth-api/**", "/api/v0/**", "/dsh/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/agents/**").permitAll()
