@@ -8,8 +8,8 @@ spring:
     active: dev
   servlet:
     multipart:
-      max-file-size: 55MB
-      max-request-size: 60MB
+      max-file-size: 1536MB
+      max-request-size: 1536MB
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
