@@ -103,7 +103,7 @@ select { appearance: none; -webkit-appearance: none; background-image: linear-gr
 <script>
 (function () {
   var q = new URLSearchParams(location.search);
-  var source = q.get('source') || 'web';
+  var source = q.get('source') || q.get('prefill_source') || 'web';
   var version = q.get('prefill_harness_version') || q.get('version') || '';
   var ua = q.get('prefill_device_info') || navigator.userAgent;
   var screenRes = window.screen.width + 'x' + window.screen.height + ' @' + (window.devicePixelRatio || 1) + 'x';
