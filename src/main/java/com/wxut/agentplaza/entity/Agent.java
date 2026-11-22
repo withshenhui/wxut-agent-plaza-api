@@ -52,4 +52,10 @@ public class Agent {
 
     @TableField(exist = false)
     private List<String> tags;
+
+    /** external | native-chat | native-rag */
+    private String agentType;
+
+    /** bound kb ids, comma separated; dept KBs auto-attached at runtime */
+    private String kbIds;
 }
