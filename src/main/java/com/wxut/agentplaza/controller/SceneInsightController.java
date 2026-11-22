@@ -442,7 +442,7 @@ public class SceneInsightController {
                 "       WHEN no_return >= 3 THEN 'mid' ELSE 'watch' END AS level" +
                 " FROM agg JOIN d ON d.xh = agg.xgh WHERE no_return >= 1)";
         return queryStudents(jt, sig, s, e, level, college, q, page, size,
-                "xgh AS id, name, college, grade, level, no_return AS m1, late AS m2, (no_return + late) AS score");
+                "xgh AS id, name, college, grade, level, no_return AS m1, late AS m2, (no_return * 2 + late) AS risk_score, (no_return + late) AS score");
     }
 
     private Map<String, Object> academicStudentsImpl(JdbcTemplate jt, String term,
@@ -455,7 +455,7 @@ public class SceneInsightController {
                 "  CASE WHEN fail_cnt >= 3 THEN 'hi' WHEN fail_cnt = 2 THEN 'mid' ELSE 'watch' END AS level" +
                 " FROM g JOIN d ON d.xh = g.xgh WHERE fail_cnt >= 1)";
         return queryStudents(jt, sig, term, null, level, college, q, page, size,
-                "xgh AS id, name, college, grade, level, fail_cnt AS m1, avg_score AS m2, courses AS score");
+                "xgh AS id, name, college, grade, level, fail_cnt AS m1, avg_score AS m2, courses AS score, (fail_cnt * 100 + (100 - COALESCE(avg_score, 100))) AS risk_score");
     }
 
     private Map<String, Object> mentalStudentsImpl(JdbcTemplate jt, String h1s, String h1e, String h2s, String e, String ds, String de,
@@ -485,8 +485,8 @@ public class SceneInsightController {
                 Long.class, h1s, h1e, h2s, e, ds, de);
         int offset = (page - 1) * size;
         List<Map<String, Object>> rows = jt.queryForList(
-                sig + " SELECT xgh AS id, name, college, grade, level, drop_pct AS m1, no_return AS m2, (drop_pct + no_return * 10) AS score FROM sig" +
-                outer + " ORDER BY CASE level WHEN 'hi' THEN 0 WHEN 'mid' THEN 1 ELSE 2 END, score DESC LIMIT " + size + " OFFSET " + offset, h1s, h1e, h2s, e, ds, de);
+                sig + " SELECT xgh AS id, name, college, grade, level, drop_pct AS m1, no_return AS m2, (drop_pct + no_return * 10) AS score, (drop_pct + no_return * 10) AS risk_score FROM sig" +
+                outer + " ORDER BY CASE level WHEN 'hi' THEN 0 WHEN 'mid' THEN 1 ELSE 2 END, risk_score DESC LIMIT " + size + " OFFSET " + offset, h1s, h1e, h2s, e, ds, de);
         Map<String, Object> r = new HashMap<>();
         r.put("total", total); r.put("records", rows);
         return r;
@@ -509,8 +509,8 @@ public class SceneInsightController {
         Long total = jt.queryForObject("SELECT COUNT(*) FROM (" + sig + " SELECT * FROM sig" + outer + ") t", Long.class, params);
         int offset = (page - 1) * size;
         List<Map<String, Object>> rows = jt.queryForList(
-                sig + " SELECT " + selectCols + " FROM sig" + outer +
-                " ORDER BY CASE level WHEN 'hi' THEN 0 WHEN 'mid' THEN 1 ELSE 2 END, score DESC LIMIT " + size + " OFFSET " + offset, params);
+                sig + " SELECT * FROM (SELECT " + selectCols + " FROM sig" + outer + ") ranked" +
+                " ORDER BY CASE level WHEN 'hi' THEN 0 WHEN 'mid' THEN 1 ELSE 2 END, COALESCE(risk_score, score) DESC LIMIT " + size + " OFFSET " + offset, params);
         Map<String, Object> r = new HashMap<>();
         r.put("total", total); r.put("records", rows);
         return r;
