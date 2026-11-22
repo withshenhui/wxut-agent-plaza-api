@@ -61,5 +61,6 @@ logging:
 sso:
   secret: XixiSso$7f3a9d21b8c4e605
   callbacks:
+    xixibuddy: http://127.0.0.1:3080/cas-callback
     xixi: http://210.28.144.49:8002/xiaozhi/user/sso-login
     plaza-admin: http://210.28.145.186:3001/agent-plaza

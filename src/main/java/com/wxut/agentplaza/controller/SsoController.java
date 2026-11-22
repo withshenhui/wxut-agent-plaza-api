@@ -86,6 +86,23 @@ public class SsoController {
                 return;
             }
 
+            if ("xixibuddy".equals(app)) {
+                String xbCallback = ssoProperties.getCallbacks().get("xixibuddy");
+                if (xbCallback == null || xbCallback.isEmpty()) {
+                    log.error("SSO entry: xixibuddy callback not configured (sso.callbacks.xixibuddy)");
+                    response.sendError(500, "xixibuddy callback not configured");
+                    return;
+                }
+                String ticket = ticketStore.create(user.getUsername(), user.getNickname());
+                StringBuilder url = new StringBuilder(xbCallback)
+                        .append(xbCallback.contains("?") ? "&" : "?")
+                        .append("ticket=")
+                        .append(URLEncoder.encode(ticket, StandardCharsets.UTF_8.name()));
+                response.sendRedirect(url.toString());
+                log.info("SSO entry: uid={} -> ticket issued for xixibuddy", uid);
+                return;
+            }
+
             if ("dify".equals(app)) {
                 String difyCallback = ssoProperties.getCallbacks().get("dify");
                 if (difyCallback == null || difyCallback.isEmpty()) {
@@ -166,7 +183,10 @@ public class SsoController {
     }
 
     private void redirectError(HttpServletRequest request, HttpServletResponse response, String app, String error) throws IOException {
-        if ("plaza-admin".equals(app)) {
+        if ("xixibuddy".equals(app)) {
+            String xbCallback = ssoProperties.getCallbacks().get("xixibuddy");
+            response.sendRedirect((xbCallback != null ? xbCallback : "/") + (xbCallback != null && xbCallback.contains("?") ? "&" : "?") + "error=" + error);
+        } else if ("plaza-admin".equals(app)) {
             response.sendRedirect(originResolver.resolveFrontEndBase(request) + "/#/admin/sso-callback?error=" + error);
         } else if ("dify".equals(app)) {
             // 错误也发到 Dify 回调但不带 ticket，由 passport 端点兜底 302 到 Dify 自己的登录页
