@@ -258,13 +258,13 @@ public class KbController {
     public void preview(@PathVariable Long kbId, @PathVariable Long fileId,
                         Authentication auth, javax.servlet.http.HttpServletResponse response) throws Exception {
         SysUser u = userOf(auth);
-        if (u == null) { response.sendError(401); return; }
+        if (u == null) { jsonError(response, 401, "未登录或登录已过期，请重新登录后再预览"); return; }
         Kb kb = kbMapper.selectById(kbId);
-        if (kb == null || !canRead(kb, u, auth)) { response.sendError(403); return; }
+        if (kb == null || !canRead(kb, u, auth)) { jsonError(response, 403, "无权访问该知识库"); return; }
         KbFile f = fileMapper.selectById(fileId);
-        if (f == null || !kbId.equals(f.getKbId())) { response.sendError(404); return; }
+        if (f == null || !kbId.equals(f.getKbId())) { jsonError(response, 404, "文件不存在或已删除"); return; }
         java.io.File disk = f.getPath() == null ? null : new java.io.File(f.getPath());
-        if (disk == null || !disk.exists()) { response.sendError(404, "文件不存在（存量迁移文件无原始副本）"); return; }
+        if (disk == null || !disk.exists()) { jsonError(response, 404, "存量迁移文件无原始副本，暂不支持预览；新上传的文件可预览"); return; }
         String ext = f.getExt() == null ? "" : f.getExt().toLowerCase();
         String mime = "pdf".equals(ext) ? "application/pdf"
                 : "docx".equals(ext) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -279,6 +279,13 @@ public class KbController {
             int n;
             while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
         }
+    }
+
+    /** sendError 会被 Spring Boot 错误页吞掉 message，前端拿不到原因——直接写 JSON */
+    private void jsonError(javax.servlet.http.HttpServletResponse response, int code, String msg) throws Exception {
+        response.setStatus(code);
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write("{\"code\":" + code + ",\"message\":\"" + msg + "\"}");
     }
 
     @PostMapping("/{kbId}/files/{fileId}/rebuild")

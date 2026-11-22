@@ -55,6 +55,12 @@ public class KbPipelineService {
         queue.offer(fileId);
     }
 
+    /** Start the worker at boot and re-enqueue files orphaned by a restart (queue lives in JVM memory). */
+    @javax.annotation.PostConstruct
+    public void init() {
+        ensureStarted();
+    }
+
     private synchronized void ensureStarted() {
         if (started) return;
         started = true;
@@ -63,6 +69,15 @@ public class KbPipelineService {
         }, "kb-pipeline");
         worker.setDaemon(true);
         worker.start();
+        try {
+            for (KbFile f : fileMapper.selectList(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<KbFile>()
+                    .in("status", "pending", "processing").orderByAsc("id"))) {
+                queue.offer(f.getId());
+                log.info("kb requeue on boot: {} {}", f.getId(), f.getName());
+            }
+        } catch (Exception e) {
+            log.error("kb requeue on boot failed", e);
+        }
     }
 
     private void loop() {
