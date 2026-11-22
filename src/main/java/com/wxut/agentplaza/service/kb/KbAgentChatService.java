@@ -69,6 +69,24 @@ public class KbAgentChatService {
                 return;
             }
 
+            // 寒暄/闲聊判断：非知识类问题不检索知识库，直接以智能体身份对话
+            String agentName = agent.getName() == null ? "制度助手" : agent.getName();
+            if (isChitchat(agentName, agent.getDescription(), q, llm)) {
+                emitter.send(SseEmitter.event().name("tool")
+                        .data("{\"message\":\"思考中…\"}"));
+                String casual = casualReply(agentName, agent.getDescription(), q, llm);
+                if (casual != null && !casual.trim().isEmpty()) {
+                    for (String piece : casual.split("(?<=。|！|？|\\n)")) {
+                        if (piece.trim().isEmpty()) continue;
+                        emitter.send(SseEmitter.event().name("text")
+                                .data("{\"data\":" + new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(piece) + "}"));
+                    }
+                    emitter.send(SseEmitter.event().name("done").data("{}"));
+                    emitter.complete();
+                    return;
+                }
+            }
+
             emitter.send(SseEmitter.event().name("tool")
                     .data("{\"message\":\"正在检索知识库…\"}"));
 
@@ -91,7 +109,7 @@ public class KbAgentChatService {
                 n++;
             }
 
-            String system = "你是无锡职业技术大学的制度问答助手。仅依据下面给出的参考资料回答；"
+            String system = "你是\"" + agent.getName() + "\"，无锡职业技术大学的制度问答智能体。仅依据下面给出的参考资料回答；"
                     + "回答中用 [编号] 标注每处依据；资料不足以回答时如实说明并建议咨询主管部门。"
                     + "涉及办理流程按\"条件→材料→流程→部门\"组织回答。";
             String user = "参考资料：\n" + ctx + "\n问题：" + q;
@@ -133,5 +151,36 @@ public class KbAgentChatService {
     private static String esc(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    }
+
+    /**
+     * 判断用户输入是否为寒暄/闲聊/与制度知识无关的问题（如"你是谁""你好""你能干什么"）。
+     * 走一次轻量 LLM 分类，判断失败时保守返回 false（按知识问题处理，不会答错）。
+     */
+    private boolean isChitchat(String agentName, String agentDesc, String q, FormLlmService llm) {
+        try {
+            String sys = "你是分类器。判断用户消息是否属于：打招呼、寒暄、询问你的身份/能力、或与制度/办事流程/学校知识完全无关的闲聊。"
+                    + "只回答 YES 或 NO。";
+            String usr = "智能体名称：" + agentName + "（职能：" + (agentDesc == null ? "" : agentDesc) + "）\n用户消息：" + q;
+            String r = llm.chat(sys, usr);
+            return r != null && r.trim().toUpperCase().startsWith("Y");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 寒暄模式下以智能体身份直接回答（不查知识库） */
+    private String casualReply(String agentName, String agentDesc, String q, FormLlmService llm) {
+        try {
+            String sys = "你是\"" + agentName + "\"，无锡职业技术大学的校园智能体"
+                    + (agentDesc != null && !agentDesc.isEmpty() ? "（职能：" + agentDesc + "）" : "")
+                    + "。用户正在和你寒暄或询问你的身份/能力。请自然、简短地回应："
+                    + "先介绍自己是谁（报出名字和职能），再根据用户的话回应；"
+                    + "可以提一句你擅长回答学校制度与办事流程问题且答案带原文出处；"
+                    + "不要编造具体制度内容（那需要查知识库），不要长篇大论，控制在 3 句话内。";
+            return llm.chat(sys, q);
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
