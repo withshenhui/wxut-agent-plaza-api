@@ -253,10 +253,37 @@ public class KbController {
         return Result.success(null);
     }
 
+    /** 文件预览：流式返回原文件（inline），前端按类型渲染（pdf=iframe / docx=mammoth / txt,md=pre） */
+    @org.springframework.web.bind.annotation.GetMapping("/{kbId}/files/{fileId}/preview")
+    public void preview(@PathVariable Long kbId, @PathVariable Long fileId,
+                        Authentication auth, javax.servlet.http.HttpServletResponse response) throws Exception {
+        SysUser u = userOf(auth);
+        if (u == null) { response.sendError(401); return; }
+        Kb kb = kbMapper.selectById(kbId);
+        if (kb == null || !canRead(kb, u, auth)) { response.sendError(403); return; }
+        KbFile f = fileMapper.selectById(fileId);
+        if (f == null || !kbId.equals(f.getKbId())) { response.sendError(404); return; }
+        java.io.File disk = f.getPath() == null ? null : new java.io.File(f.getPath());
+        if (disk == null || !disk.exists()) { response.sendError(404, "文件不存在（存量迁移文件无原始副本）"); return; }
+        String ext = f.getExt() == null ? "" : f.getExt().toLowerCase();
+        String mime = "pdf".equals(ext) ? "application/pdf"
+                : "docx".equals(ext) ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                : "txt".equals(ext) ? "text/plain;charset=UTF-8"
+                : "text/markdown;charset=UTF-8";
+        response.setContentType(mime);
+        response.setHeader("Content-Disposition", "inline; filename*=UTF-8''" + java.net.URLEncoder.encode(f.getName(), "UTF-8"));
+        response.setContentLengthLong(disk.length());
+        try (java.io.InputStream in = new java.io.FileInputStream(disk);
+             java.io.OutputStream out = response.getOutputStream()) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+        }
+    }
+
     @PostMapping("/{kbId}/files/{fileId}/rebuild")
     public Result<Void> rebuild(@PathVariable Long kbId, @PathVariable Long fileId, Authentication auth) {
         SysUser u = userOf(auth);
-        if (u == null) return Result.error(401, "未登录");
         Kb kb = kbMapper.selectById(kbId);
         if (kb == null || !canWrite(kb, u, auth)) return Result.error(403, "无权限");
         KbFile f = fileMapper.selectById(fileId);
