@@ -12,6 +12,8 @@ public class AgentVO {
     private String name;
     private String icon;
     private String description;
+    /** 推荐问题（|分隔，聊天页 placeholder 轮换） */
+    private String suggest;
     private List<String> tags;
     private String categoryKey;
     private String categoryName;

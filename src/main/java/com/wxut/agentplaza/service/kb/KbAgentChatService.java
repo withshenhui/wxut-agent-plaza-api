@@ -69,9 +69,9 @@ public class KbAgentChatService {
                 return;
             }
 
-            // 寒暄/闲聊判断：非知识类问题不检索知识库，直接以智能体身份对话
+            // 寒暄/闲聊判断：规则先快速短路（你好/你是谁/能干什么等），未命中再走 LLM 分类
             String agentName = agent.getName() == null ? "制度助手" : agent.getName();
-            if (isChitchat(agentName, agent.getDescription(), q, llm)) {
+            if (isChitchatFast(q) || isChitchat(agentName, agent.getDescription(), q, llm)) {
                 emitter.send(SseEmitter.event().name("tool")
                         .data("{\"message\":\"思考中…\"}"));
                 String casual = casualReply(agentName, agent.getDescription(), q, llm);
@@ -151,6 +151,37 @@ public class KbAgentChatService {
     private static String esc(String s) {
         if (s == null) return "";
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
+    }
+
+    /**
+     * 规则快速短路：命中寒暄模式（你好/在吗/你是谁/能干什么/谢谢等）直接判定，
+     * 免去 LLM 分类的秒级延迟。短消息（<=6 字）更宽松——长句几乎必是知识问题。
+     */
+    private static boolean isChitchatFast(String q) {
+        if (q == null) return true;
+        String s = q.trim();
+        if (s.isEmpty()) return true;
+        if (s.length() > 30) return false;
+        String low = s.toLowerCase();
+        if (s.length() <= 6) {
+            // 极短消息：含问号/数字多半是查询，纯问候词直接放行
+            if (s.matches(".*[\\d?？].*")) return false;
+            return s.contains("你好") || s.contains("您好") || low.contains("hi")
+                    || low.contains("hello") || s.contains("在吗") || s.contains("在么")
+                    || s.contains("嗨") || s.contains("哈喽") || s.equals("你是谁")
+                    || s.contains("谢谢") || s.contains("感谢") || s.contains("再见")
+                    || s.contains("拜拜");
+        }
+        // 中等长度：身份/能力/寒暄关键词（"怎么"开头的办理类问题不算寒暄）
+        boolean chitchatWord = low.contains("你是谁") || low.contains("你叫什么") || low.contains("你是什么")
+                || low.contains("自我介绍") || low.contains("你能干什么") || low.contains("你能做什么")
+                || low.contains("你会做什么") || low.contains("你有什么功能") || low.contains("你可以做什么")
+                || low.contains("你有什么本事") || low.contains("怎么使用") || low.contains("怎么用你")
+                || (low.contains("你") && low.contains("是谁"))
+                || low.matches("^(你好|您好|哈喽|嗨|hi|hello|在吗|在么)[,，。!！~～\\s].*");
+        boolean knowledgeHint = low.contains("流程") || low.contains("规定") || low.contains("条件")
+                || low.contains("怎么办") || low.contains("怎么办理") || low.contains("有哪些") || low.contains("要求");
+        return chitchatWord && !knowledgeHint;
     }
 
     /**

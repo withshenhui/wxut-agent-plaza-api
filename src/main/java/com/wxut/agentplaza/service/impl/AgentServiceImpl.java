@@ -170,6 +170,7 @@ public class AgentServiceImpl implements AgentService {
         vo.setName(a.getName());
         vo.setIcon(a.getIcon());
         vo.setDescription(a.getDescription());
+        vo.setSuggest(a.getSuggest());
         vo.setTags(tagMap.getOrDefault(a.getId(), Collections.emptyList()));
         vo.setIsRecommended(a.getIsRecommended());
         vo.setIsBuilding(a.getIsBuilding() != null && a.getIsBuilding() == 1 ? 1 : 0);

@@ -26,6 +26,9 @@ public class Agent {
 
     private String description;
 
+    /** 推荐问题，|分隔 */
+    private String suggest;
+
     private String detail;
 
     private Long categoryId;
