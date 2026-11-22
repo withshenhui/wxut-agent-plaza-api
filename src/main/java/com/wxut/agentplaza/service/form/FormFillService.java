@@ -41,15 +41,13 @@ public class FormFillService {
         if (record == null) throw new IllegalArgumentException("填报记录不存在");
         SseEmitter emitter = new SseEmitter(300_000L);
         pool.submit(() -> {
+            SafeEmitter se = new SafeEmitter(emitter);
             try {
-                run(record, emitter);
+                run(record, se);
             } catch (Exception e) {
                 log.error("智能填报：流水线异常 recordId={}", recordId, e);
-                try {
-                    send(emitter, evt("error", "message", "填报流水线异常：" + e.getMessage()));
-                } catch (Exception ignore) {
-                }
-                emitter.complete();
+                se.send(evt("error", "message", "填报流水线异常：" + e.getMessage()));
+                se.complete();
             }
         });
         return emitter;
@@ -61,6 +59,7 @@ public class FormFillService {
         if (record == null) throw new IllegalArgumentException("填报记录不存在");
         SseEmitter emitter = new SseEmitter(180_000L);
         pool.submit(() -> {
+            SafeEmitter se = new SafeEmitter(emitter);
             try {
                 List<Map<String, Object>> fields = readFields(record);
                 if (index < 0 || index >= fields.size()) throw new IllegalArgumentException("字段序号越界");
@@ -68,60 +67,87 @@ public class FormFillService {
                 Map<String, Object> profile = warehouse.getProfile(record.getTeacherId(), record.getTeacherName());
                 String khnf = fields.stream().filter(x -> "_khnf".equals(str(x.get("key"))))
                         .map(x -> str(x.get("val"))).findFirst().orElse(assessYear());
-                send(emitter, evt("nstart", "index", index, "label", f.get("label")));
-                String text = narrative(emitter, index, f, profile, record, khnf);
+                se.send(evt("nstart", "index", index, "label", f.get("label")));
+                String text = narrative(se, index, f, profile, record, khnf);
                 f.put("val", text);
                 record.setFieldsJson(om.writeValueAsString(fields));
                 record.setFillCount(countFilled(fields));
                 recordMapper.updateById(record);
-                send(emitter, evt("done", "index", index));
-                emitter.complete();
+                se.send(evt("done", "index", index));
+                se.complete();
             } catch (Exception e) {
-                try {
-                    send(emitter, evt("error", "message", e.getMessage()));
-                } catch (Exception ignore) {
-                }
-                emitter.complete();
+                se.send(evt("error", "message", e.getMessage()));
+                se.complete();
             }
         });
         return emitter;
     }
 
+    /**
+     * SSE 连接死亡（前置代理掐长连接/浏览器断开/emitter 超时）后静默停止推送，
+     * 流水线继续跑完并落库——服务端结果不依赖浏览器连接存活。
+     */
+    private class SafeEmitter {
+        private final SseEmitter target;
+        private volatile boolean dead = false;
+        SafeEmitter(SseEmitter target) { this.target = target; }
+        void send(Map<String, Object> data) {
+            if (dead) return;
+            try {
+                target.send(SseEmitter.event().data(om.writeValueAsString(data)));
+            } catch (Exception e) {
+                dead = true;
+            }
+        }
+        void complete() {
+            if (dead) return;
+            try { target.complete(); } catch (Exception ignore) { }
+        }
+    }
+
     // ================= 主流程 =================
 
-    private void run(FormRecord record, SseEmitter emitter) throws Exception {
+    private void run(FormRecord record, SafeEmitter emitter) throws Exception {
         List<Map<String, Object>> fields = readFields(record);
         int total = (int) fields.stream().filter(f -> !"_khnf".equals(str(f.get("key")))).count();
-        send(emitter, evt("start", "total", total, "recordId", record.getId()));
+        // 计数字段的显示序号：_khnf 为隐藏字段不计入（显示 0，前端不渲染百分比）
+        int[] seq = new int[fields.size()];
+        {
+            int c = 0;
+            for (int i = 0; i < fields.size(); i++) {
+                seq[i] = "_khnf".equals(str(fields.get(i).get("key"))) ? 0 : ++c;
+            }
+        }
+        emitter.send(evt("start", "total", total, "recordId", record.getId()));
 
         // 阶段 1：解析模板
-        send(emitter, evt("stage", "stage", "parse", "state", "live", "text", "正在识别表格字段与分组…"));
+        emitter.send(evt("stage", "stage", "parse", "state", "live", "text", "正在识别表格字段与分组…"));
         Thread.sleep(400);
-        send(emitter, evt("stage", "stage", "parse", "state", "done", "text",
+        emitter.send(evt("stage", "stage", "parse", "state", "done", "text",
                 "已识别 " + total + " 项字段 · " + groupsOf(fields) + " 个分组"));
 
         // 阶段 2：检索数仓
-        send(emitter, evt("stage", "stage", "fetch", "state", "live", "text", "正在检索教师数据仓…"));
+        emitter.send(evt("stage", "stage", "fetch", "state", "live", "text", "正在检索教师数据仓…"));
         Map<String, Object> profile = warehouse.getProfile(record.getTeacherId(), record.getTeacherName());
         boolean down = Boolean.TRUE.equals(profile.get("_down"));
         boolean nomatch = Boolean.TRUE.equals(profile.get("_nomatch"));
         boolean fb = down || nomatch;
-        send(emitter, evt("stage", "stage", "fetch", "state", "done", "text",
+        emitter.send(evt("stage", "stage", "fetch", "state", "done", "text",
                 down ? "教职工数仓暂不可达 · 数仓直填字段本次留空，请在下一步手动补充"
                 : nomatch ? "工号 " + record.getTeacherId() + " 未在教职工数仓命中 · 数仓直填字段请手动补充"
                 : "已命中 " + profile.get("name") + "（工号 " + profile.get("zgh") + "）· 教职工 / 学历 / 科研 / 评价 / 考核"));
 
         // 阶段 3：生成内容（先由大模型分析本次填报对应的考核年度）
-        send(emitter, evt("stage", "stage", "generate", "state", "live", "text", "大模型分析考核年度…"));
+        emitter.send(evt("stage", "stage", "generate", "state", "live", "text", "大模型分析考核年度…"));
         String khnf = assessYear();
         for (int i = 0; i < fields.size(); i++) {
             Map<String, Object> f = fields.get(i);
             if ("_khnf".equals(str(f.get("key")))) {
                 f.put("val", khnf);
-                send(emitter, fieldEvent(i, f, false, fields.size()));
+                emitter.send(fieldEvent(i, f, false, seq[i], total));
             }
         }
-        send(emitter, evt("stage", "stage", "generate", "state", "live", "text",
+        emitter.send(evt("stage", "stage", "generate", "state", "live", "text",
                 "考核年度：" + khnf + " · 开始直填结构化字段…"));
         int filled = 0;
         for (int i = 0; i < fields.size(); i++) {
@@ -135,35 +161,35 @@ public class FormFillService {
                     f.put("val", val);
                 }
                 if (!str(f.get("val")).isEmpty()) filled++;
-                send(emitter, fieldEvent(i, f, fb, fields.size()));
+                emitter.send(fieldEvent(i, f, fb, seq[i], total));
                 Thread.sleep(60);
             } else if ("material".equals(src)) {
                 // 素材为用户已输入内容，只回显与计数，不参与直填/生成
                 if (!str(f.get("val")).isEmpty()) filled++;
-                send(emitter, fieldEvent(i, f, fb, fields.size()));
+                emitter.send(fieldEvent(i, f, fb, seq[i], total));
             } else if ("need".equals(src)) {
                 if (!str(f.get("val")).isEmpty()) filled++;
-                send(emitter, fieldEvent(i, f, fb, fields.size()));
+                emitter.send(fieldEvent(i, f, fb, seq[i], total));
             }
         }
-        send(emitter, evt("stage", "stage", "generate", "state", "live", "text", "大模型起草叙述性内容…"));
+        emitter.send(evt("stage", "stage", "generate", "state", "live", "text", "大模型起草叙述性内容…"));
         for (int i = 0; i < fields.size(); i++) {
             Map<String, Object> f = fields.get(i);
             if (!"ai".equals(str(f.get("src")))) continue;
             // 用户已手动改写过的叙述字段（如本人总结）不再覆盖
             if (Boolean.TRUE.equals(f.get("edited")) && !str(f.get("val")).isEmpty()) {
-                send(emitter, evt("nstart", "index", i, "label", f.get("label")));
-                send(emitter, evt("nend", "index", i, "val", str(f.get("val"))));
+                emitter.send(evt("nstart", "index", i, "label", f.get("label")));
+                emitter.send(evt("nend", "index", i, "val", str(f.get("val"))));
                 filled++;
                 continue;
             }
-            send(emitter, evt("nstart", "index", i, "label", f.get("label")));
+            emitter.send(evt("nstart", "index", i, "label", f.get("label")));
             String text = narrative(emitter, i, f, profile, record, khnf);
             f.put("val", text);
             filled++;
-            send(emitter, evt("nend", "index", i, "val", text));
+            emitter.send(evt("nend", "index", i, "val", text));
         }
-        send(emitter, evt("stage", "stage", "generate", "state", "done", "text", "填写完成 · 叙述内容已标记待核对"));
+        emitter.send(evt("stage", "stage", "generate", "state", "done", "text", "填写完成 · 叙述内容已标记待核对"));
 
         // 落库
         String status = "done";
@@ -176,7 +202,7 @@ public class FormFillService {
         record.setStatus(status);
         recordMapper.updateById(record);
 
-        send(emitter, evt("done", "fillCount", filled, "total", total, "status", status));
+        emitter.send(evt("done", "fillCount", filled, "total", total, "status", status));
         emitter.complete();
     }
 
@@ -232,7 +258,7 @@ public class FormFillService {
     }
 
     /** 叙述字段：优先 LLM 流式起草；失败回落事实拼装 */
-    private String narrative(SseEmitter emitter, int index, Map<String, Object> f,
+    private String narrative(SafeEmitter emitter, int index, Map<String, Object> f,
                              Map<String, Object> profile, FormRecord record, String khnf) {
         String key = str(f.get("key"));
         String label = str(f.get("label"));
@@ -247,10 +273,7 @@ public class FormFillService {
         try {
             String full = llm.chatStream(sys, user, piece -> {
                 sb.append(piece);
-                try {
-                    send(emitter, evt("delta", "index", index, "chunk", piece));
-                } catch (Exception ignore) {
-                }
+                emitter.send(evt("delta", "index", index, "chunk", piece));
             });
             return full;
         } catch (Exception e) {
@@ -258,10 +281,7 @@ public class FormFillService {
             String text = isSummary ? fallbackSummary(profile, record, khnf) : fallbackNarrative(key, profile);
             // 回落也按块推送，前端体验一致
             for (String piece : chunk(text, 6)) {
-                try {
-                    send(emitter, evt("delta", "index", index, "chunk", piece));
-                } catch (Exception ignore) {
-                }
+                emitter.send(evt("delta", "index", index, "chunk", piece));
             }
             return text;
         }
@@ -375,12 +395,13 @@ public class FormFillService {
         return out;
     }
 
-    private Map<String, Object> fieldEvent(int index, Map<String, Object> f, boolean fallback, int total) {
+    /** seq=计数字段的显示序号（_khnf 为 0，前端不渲染 x/y 与百分比）；total=过滤 _khnf 后的总数 */
+    private Map<String, Object> fieldEvent(int index, Map<String, Object> f, boolean fallback, int seq, int total) {
         String basis = str(f.get("basis"));
         if (fallback && !"need".equals(str(f.get("src"))) && !basis.isEmpty()) {
             basis += "（数仓本次未提供，请人工核对）";
         }
-        Map<String, Object> e = evt("field", "index", index, "idx", index + 1, "total", total);
+        Map<String, Object> e = evt("field", "index", index, "idx", seq, "total", total);
         e.put("label", f.get("label"));
         e.put("g", f.get("g"));
         e.put("src", f.get("src"));
@@ -397,10 +418,6 @@ public class FormFillService {
         m.put("type", type);
         for (int i = 0; i + 1 < kv.length; i += 2) m.put(String.valueOf(kv[i]), kv[i + 1]);
         return m;
-    }
-
-    private void send(SseEmitter emitter, Map<String, Object> data) throws Exception {
-        emitter.send(SseEmitter.event().data(om.writeValueAsString(data)));
     }
 
     @SuppressWarnings("unchecked")
