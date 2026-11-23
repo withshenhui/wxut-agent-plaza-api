@@ -8,6 +8,7 @@ import com.wxut.agentplaza.dto.UserDTO;
 import com.wxut.agentplaza.entity.SysUser;
 import com.wxut.agentplaza.entity.SysUserPerm;
 import com.wxut.agentplaza.mapper.SysUserPermMapper;
+import com.wxut.agentplaza.service.FeatureService;
 import com.wxut.agentplaza.service.PermissionService;
 import com.wxut.agentplaza.service.SysUserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,9 +18,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
 
 @Tag(name = "用户管理")
@@ -31,10 +29,7 @@ public class SysUserController {
     private final SysUserService userService;
     private final PermissionService permissionService;
     private final SysUserPermMapper permMapper;
-
-    /** 允许后台逐人加授/剥夺的功能权限（申请开通制类入口） */
-    private static final Set<String> GRANTABLE_PERMS = Collections.unmodifiableSet(
-            new HashSet<>(Arrays.asList("dev.entry")));
+    private final FeatureService featureService;
 
     @GetMapping
     @Operation(summary = "获取用户列表")
@@ -91,7 +86,7 @@ public class SysUserController {
     @OperationLog("设置用户功能权限")
     public Result<Void> setPerm(@PathVariable Long id, @RequestParam String permKey,
                                 @RequestParam boolean granted) {
-        if (!GRANTABLE_PERMS.contains(permKey)) {
+        if (!featureService.grantablePerms().contains(permKey)) {
             return Result.error(400, "该权限项不支持后台设置：" + permKey);
         }
         SysUser u = userService.getUserById(id);
