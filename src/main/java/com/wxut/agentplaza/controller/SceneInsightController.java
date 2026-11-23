@@ -419,6 +419,29 @@ public class SceneInsightController {
             r.put("consumption", trend);
         }
 
+        /* funding/scene：排除项核验真实数据（请假天数 + 消费覆盖天数 + 单笔最大） */
+        if ("funding".equals(view) || "scene".equals(view)) {
+            List<Map<String, Object>> leaves = jt.queryForList(
+                    "SELECT kssj::date AS start_date, jssj::date AS end_date, qjlx, left(wcsy, 30) AS reason" +
+                    " FROM usr_gxai.t_yzsfw_xsqjb WHERE xh = ? AND dke_op_type = 'c'" +
+                    " AND jssj >= ? AND kssj <= ?" +
+                    " ORDER BY kssj DESC LIMIT 20", studentId, ds + " 00:00", de + " 23:59");
+            java.util.Set<String> leaveDays = new java.util.HashSet<>();
+            for (Map<String, Object> lv : leaves) {
+                LocalDate st = LocalDate.parse(String.valueOf(lv.get("start_date")).substring(0, 10));
+                LocalDate en = LocalDate.parse(String.valueOf(lv.get("end_date")).substring(0, 10));
+                for (LocalDate d = st; !d.isAfter(en); d = d.plusDays(1)) leaveDays.add(d.toString());
+            }
+            r.put("leaves", leaves);
+            r.put("leaveDays", leaveDays.size());
+            Map<String, Object> cov = jt.queryForMap(
+                    "SELECT COUNT(DISTINCT (" + BJ + ")::date) AS cover, COALESCE(MAX(xfzze), 0) AS max_amt" +
+                    " FROM usr_gxai.t_ykt_jkb c WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN +
+                    " AND c.xgh = ?", ds, de, studentId);
+            r.put("coverDays", ((Number) cov.get("cover")).intValue());
+            r.put("maxAmt", ((Number) cov.get("max_amt")).doubleValue() / 100.0);
+        }
+
         return Result.success(r);
     }
 
