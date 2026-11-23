@@ -3,6 +3,7 @@ package com.wxut.agentplaza.controller;
 import com.wxut.agentplaza.annotation.OperationLog;
 import com.wxut.agentplaza.common.Result;
 import com.wxut.agentplaza.entity.SysConfig;
+import com.wxut.agentplaza.service.FeatureService;
 import com.wxut.agentplaza.service.SysConfigService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -24,6 +25,7 @@ import java.util.Set;
 public class SysConfigController {
 
     private final SysConfigService configService;
+    private final FeatureService featureService;
 
     /**
      * 允许未登录读取的配置 key 白名单。
@@ -69,6 +71,11 @@ public class SysConfigController {
     @OperationLog("更新系统配置")
     public Result<Void> update(@PathVariable String key, @RequestBody String value) {
         configService.updateByKey(key, value);
+        // v2.features 变更后立即失效注册表缓存，避免后台仍按旧的 60s TTL 返回旧注册表
+        // （后台 UI 提示"刷新后生效"，此处保证刷新即刻生效）。
+        if ("v2.features".equals(key)) {
+            featureService.evict();
+        }
         return Result.success();
     }
 }

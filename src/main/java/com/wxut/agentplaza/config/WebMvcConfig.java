@@ -23,7 +23,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(featureAccessInterceptor)
                 .addPathPatterns("/api/v1/**")
-                .excludePathPatterns("/api/v1/auth/**", "/api/v1/configs/**", "/api/v1/sso/**", "/api/v1/colleges/**");
+                // /api/v1/kb/search 与 /api/v1/kb/public-catalog 是 token 网关（X-Kb-Token）校验的公开端点，
+                // 供 XixiBuddy / 跨服务检索匿名调用，SecurityConfig 已 permitAll，必须保持匿名放行，
+                // 不能被本拦截器的 kb 功能门（gate=login）拦下。
+                .excludePathPatterns("/api/v1/auth/**", "/api/v1/configs/**", "/api/v1/sso/**", "/api/v1/colleges/**",
+                        "/api/v1/kb/search", "/api/v1/kb/public-catalog");
     }
 
     @Override

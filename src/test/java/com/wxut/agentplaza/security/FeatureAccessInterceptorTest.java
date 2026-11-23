@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Collections;
@@ -44,6 +45,13 @@ class FeatureAccessInterceptorTest {
     private void authenticateAs(Long userId) {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(userId, null, Collections.emptyList()));
+    }
+
+    /** Authenticate as admin: Long principal + ROLE_ADMIN authority (同 JwtAuthenticationFilter). */
+    private void authenticateAsAdmin(Long userId) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(userId, null,
+                        Collections.singletonList(new SimpleGrantedAuthority("ROLE_ADMIN"))));
     }
 
     @AfterEach
@@ -95,5 +103,14 @@ class FeatureAccessInterceptorTest {
         assertTrue(it.preHandle(new MockHttpServletRequest("GET","/api/v1/form/list"), res, new Object()));
         assertEquals(200, res.getStatus());
         verify(ps).has(eq(7L), eq("teacher.form"));
+    }
+
+    @Test void admin_passes_even_when_feature_disabled() throws Exception {
+        // F7：停用功能不得锁死后台（api 前缀同时承载后台 CRUD）→ 管理员放行
+        FeatureDef f = new FeatureDef(); f.setKey("models"); f.setEnabled(false); setup(f);
+        authenticateAsAdmin(Long.valueOf(1L));
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        assertTrue(it.preHandle(new MockHttpServletRequest("POST","/api/v1/models"), res, new Object()));
+        assertEquals(200, res.getStatus());
     }
 }

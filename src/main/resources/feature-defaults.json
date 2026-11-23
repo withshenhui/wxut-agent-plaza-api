@@ -2,8 +2,8 @@
   "version": 1,
   "nav": [
     {"key":"plaza","label":"首页","hidden":false},
-    {"key":"insight","label":"AI 数据洞察","hidden":false},
     {"key":"teacher","label":"AI教师工作台","hidden":false},
+    {"key":"insight","label":"AI 数据洞察","hidden":false},
     {"key":"dev","label":"智能体开发平台","hidden":false},
     {"key":"models","label":"模型服务","hidden":false},
     {"key":"kb","label":"知识库中心","hidden":false}
