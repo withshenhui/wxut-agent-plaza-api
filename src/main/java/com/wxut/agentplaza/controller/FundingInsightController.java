@@ -228,13 +228,13 @@ public class FundingInsightController {
                 PER_PCT + " SELECT COUNT(*) FROM pct" + outer, Long.class, s, e);
 
         int offset = (page - 1) * size;
-        // 同档内排序：吃得越勤（顿数多）越靠前——顿数相当的按分位更靠前。仅看分位会把偶发低消费排前。
+        // 同档内排序：分位越小（消费相对越低）越靠前；分位相同再按顿数多者优先（数据更扎实）。仅看顿数会把P更小的学生压后。
         List<Map<String, Object>> rows = jt.queryForList(
                 PER_PCT + " SELECT * FROM (SELECT xgh AS id, name, college, grade," +
                 "  CASE WHEN pr < 0.05 THEN 'hi' WHEN pr < 0.15 THEN 'mid' ELSE 'watch' END AS level," +
                 "  meals, avg_price AS price, spend, ROUND(pr * 100) AS pct" +
                 " FROM pct" + outer + ") ranked" +
-                " ORDER BY CASE level WHEN 'hi' THEN 0 WHEN 'mid' THEN 1 ELSE 2 END, meals DESC, pct ASC LIMIT " + size + " OFFSET " + offset, s, e);
+                " ORDER BY CASE level WHEN 'hi' THEN 0 WHEN 'mid' THEN 1 ELSE 2 END, pct ASC, meals DESC LIMIT " + size + " OFFSET " + offset, s, e);
 
         Map<String, Object> r = new HashMap<>();
         r.put("total", total);
