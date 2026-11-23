@@ -8,6 +8,7 @@ import com.wxut.agentplaza.exception.BusinessException;
 import com.wxut.agentplaza.mapper.SysCollegeMapper;
 import com.wxut.agentplaza.mapper.SysUserMapper;
 import com.wxut.agentplaza.mapper.SysUserPermMapper;
+import com.wxut.agentplaza.service.FeatureService;
 import com.wxut.agentplaza.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -27,39 +28,14 @@ public class PermissionServiceImpl implements PermissionService {
     private final SysUserMapper userMapper;
     private final SysUserPermMapper permMapper;
     private final SysCollegeMapper collegeMapper;
+    private final FeatureService featureService;
 
     /** 进程内缓存（量小；权限变更走 evict） */
     private final Map<Long, Set<String>> cache = new ConcurrentHashMap<>();
 
-    /** 功能权限：普通用户默认不含 dev.entry（开发平台需授权，走 sys_user_perm 单独加授）；
-     * 数据边界统一由 scope()（学院归属）控制，全校锡锡随数据范围走 */
-    public static final Set<String> USER_DEFAULT = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "plaza.view", "chat.college", "teacher.form", "kb.use",
-            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export"
-    )));
-
     /** 辅导员（t_xg_fdy 命中）自动加授 */
     public static final Set<String> FDY_GRANTS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export"
-    )));
-
-    public static final Set<String> COLLEGE_ADMIN_DEFAULT = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "plaza.view", "chat.college", "teacher.form", "kb.use", "dev.entry",
-            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export",
-            "admin.dashboard"
-    )));
-
-    public static final Set<String> LEADER_DEFAULT = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "plaza.view", "chat.college", "chat.all",
-            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export",
-            "teacher.form", "kb.use", "dev.entry"
-    )));
-
-    public static final Set<String> ADMIN_DEFAULT = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "plaza.view", "chat.college", "chat.all",
-            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export",
-            "teacher.form", "kb.use", "dev.entry",
-            "admin.dashboard", "admin.agent", "admin.model", "admin.user", "admin.config", "admin.file", "admin.log", "admin.xixi"
     )));
 
     @Override
@@ -70,14 +46,8 @@ public class PermissionServiceImpl implements PermissionService {
     private Set<String> compute(Long userId) {
         SysUser user = userMapper.selectById(userId);
         if (user == null) return Collections.emptySet();
-        Set<String> out = new HashSet<>();
         String role = user.getRole() == null ? "user" : user.getRole();
-        switch (role) {
-            case "admin": out.addAll(ADMIN_DEFAULT); break;
-            case "leader": out.addAll(LEADER_DEFAULT); break;
-            case "college_admin": out.addAll(COLLEGE_ADMIN_DEFAULT); break;
-            default: out.addAll(USER_DEFAULT); break;
-        }
+        Set<String> out = new HashSet<>(featureService.defaults(role));
         // 个人覆盖：加授并集，剥夺差集
         for (SysUserPerm p : permMapper.selectList(
                 new LambdaQueryWrapper<SysUserPerm>().eq(SysUserPerm::getUserId, userId))) {
@@ -156,5 +126,6 @@ public class PermissionServiceImpl implements PermissionService {
     @Override
     public void evict(Long userId) {
         cache.remove(userId);
+        featureService.evict();
     }
 }
