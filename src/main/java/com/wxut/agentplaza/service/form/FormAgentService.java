@@ -79,17 +79,21 @@ public class FormAgentService {
      * 预置“年度考核登记表”升级为省级实模板版（幂等）：
      * 旧版 fields_json 不含 summary1，命中即覆盖字段定义与文件信息。
      */
+    /** 预置「年度考核登记表」幂等同步：description/字段schema/模板文件与代码不一致即覆盖（代码即真理；仅动 source=preset） */
     private void upgradeKhglPreset() {
         try {
             List<FormTemplate> all = templateMapper.selectList(null);
             for (FormTemplate t : all) {
                 if (!"preset".equals(t.getSource())) continue;
                 boolean isKh = t.getName() != null && t.getName().contains("年度考核登记表");
-                boolean alreadyNew = t.getFieldsJson() != null && t.getFieldsJson().contains("summary1");
-                if (isKh && !alreadyNew) {
-                    for (Object[] p : FormFieldCatalog.presets()) {
-                        if ("年度考核登记表".equals(p[0])) {
-                            FormTemplate fresh = toTemplate(p);
+                if (!isKh) continue;
+                for (Object[] p : FormFieldCatalog.presets()) {
+                    if ("年度考核登记表".equals(p[0])) {
+                        FormTemplate fresh = toTemplate(p);
+                        boolean same = fresh.getFieldsJson().equals(t.getFieldsJson())
+                                && fresh.getDescription().equals(t.getDescription())
+                                && String.valueOf(fresh.getFilePath()).equals(String.valueOf(t.getFilePath()));
+                        if (!same) {
                             t.setDescription(fresh.getDescription());
                             t.setFileType(fresh.getFileType());
                             t.setFileName(fresh.getFileName());
@@ -97,7 +101,7 @@ public class FormAgentService {
                             t.setFieldsJson(fresh.getFieldsJson());
                             t.setFieldCount(fresh.getFieldCount());
                             templateMapper.updateById(t);
-                            log.info("智能填报：已将「年度考核登记表」升级为省级实模板版（可导出 Word）");
+                            log.info("智能填报：已同步「年度考核登记表」预置模板（字段/文案与代码对齐）");
                         }
                     }
                 }
@@ -336,6 +340,7 @@ public class FormAgentService {
         } else if (body.containsKey("status")) {
             r.setStatus(String.valueOf(body.get("status")));
         }
+        r.setUpdatedAt(LocalDateTime.now());
         recordMapper.updateById(r);
     }
 
@@ -368,6 +373,70 @@ public class FormAgentService {
         } catch (Exception e) {
             return "[]";
         }
+    }
+
+    /**
+     * 自定义文件解析回填：抽取文档文本 → LLM 依据文本抽取字段值 → 仅回填空字段（不动已核对内容）。
+     * 支持 pdf / xlsx / docx；pdf 优先一体机解析服务，失败回退本地 PDFBox。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> parseAndFill(Long recordId, org.springframework.web.multipart.MultipartFile file,
+                                            String username, boolean admin) throws Exception {
+        FormRecord r = recordMapper.selectById(recordId);
+        if (r == null) throw new IllegalArgumentException("填报记录不存在");
+        if (!admin && !username.equals(r.getCreatedBy())) throw new IllegalArgumentException("无权修改他人记录");
+        String name = file.getOriginalFilename() == null ? "file" : file.getOriginalFilename();
+        String lower = name.toLowerCase();
+        if (!lower.endsWith(".pdf") && !lower.endsWith(".xlsx") && !lower.endsWith(".docx")) {
+            throw new IllegalArgumentException("仅支持 PDF / XLSX / DOCX 文件");
+        }
+        if (file.getSize() > 20L * 1024 * 1024) throw new IllegalArgumentException("单个文件不超过 20MB");
+        byte[] bytes = file.getBytes();
+        String text = parseService.extractText(bytes, name);
+        if (text == null || text.trim().isEmpty()) {
+            throw new IllegalArgumentException("未能解析出文本内容（可能是扫描版 PDF，请改用可选中文本的文件）");
+        }
+        List<Map<String, Object>> fields = om.readValue(r.getFieldsJson(), List.class);
+        Map<String, String> vals = parseService.extractValues(text, fields);
+        List<Map<String, Object>> filled = new ArrayList<>();
+        List<String> skipped = new ArrayList<>();
+        for (Map<String, Object> f : fields) {
+            Object labelObj = f.get("label");
+            String label = labelObj == null ? "" : String.valueOf(labelObj);
+            String v = vals.get(label);
+            if (v == null || v.trim().isEmpty()) {
+                // 归一化匹配：LLM 返回键可能省略括注/增删字词（如 "论文数" vs "论文数（合计）"）
+                for (Map.Entry<String, String> en : vals.entrySet()) {
+                    String k = en.getKey();
+                    if (k == null || k.trim().isEmpty() || en.getValue() == null || en.getValue().trim().isEmpty()) continue;
+                    if (k.equals(label) || k.contains(label) || label.contains(k)) { v = en.getValue(); break; }
+                }
+            }
+            if (v == null || v.trim().isEmpty()) continue;
+            String cur = f.get("val") == null ? "" : String.valueOf(f.get("val"));
+            if (cur.trim().isEmpty()) {
+                f.put("val", v);
+                f.put("upFrom", "upload");
+                f.put("edited", true);
+                Map<String, Object> it = new LinkedHashMap<>();
+                it.put("label", label);
+                it.put("val", v);
+                filled.add(it);
+            } else if (!cur.trim().equals(v.trim())) {
+                skipped.add(label);
+            }
+        }
+        r.setFieldsJson(om.writeValueAsString(fields));
+        r.setFillCount(countFilled(fields));
+        r.setStatus(statusOf(fields));
+        r.setUpdatedAt(LocalDateTime.now());
+        recordMapper.updateById(r);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("filled", filled);
+        out.put("count", filled.size());
+        out.put("skipped", skipped);
+        out.put("textChars", text.length());
+        return out;
     }
 
     private static int countFilled(List<Map<String, Object>> fields) {

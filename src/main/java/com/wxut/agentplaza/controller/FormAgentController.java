@@ -42,6 +42,7 @@ public class FormAgentController {
     private final FormWarehouseService warehouseService;
     private final FormExportService exportService;
     private final SysOperationLogService logService;
+    private final com.wxut.agentplaza.service.SysConfigService sysConfigService;
     private final FormRecordMapper recordMapper;
     private final SysUserMapper userMapper;
 
@@ -183,6 +184,53 @@ public class FormAgentController {
             return Result.success(out);
         } catch (IllegalArgumentException e) {
             return Result.error(400, e.getMessage());
+        }
+    }
+
+    /** 文档解析服务（校园一体机）健康探测：供管理后台展示在线状态 */
+    @GetMapping("/parse-service/health")
+    public Result<Map<String, Object>> parseHealth() {
+        Map<String, Object> out = new java.util.LinkedHashMap<String, Object>();
+        String url = "";
+        try {
+            String v = sysConfigService.getByKey("pdf.parse_url").getConfigValue();
+            url = v == null ? "" : v.trim();
+        } catch (Exception ignore) {}
+        out.put("url", url);
+        if (url.isEmpty()) {
+            out.put("online", false);
+            out.put("note", "未配置解析服务地址");
+            return Result.success(out);
+        }
+        java.net.HttpURLConnection conn = null;
+        boolean online = false;
+        try {
+            String health = url.replaceAll("/parse/?$", "") + "/health";
+            conn = (java.net.HttpURLConnection) new java.net.URL(health).openConnection();
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(2500);
+            conn.setReadTimeout(4000);
+            online = conn.getResponseCode() == 200;
+        } catch (Exception e) {
+            online = false;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+        out.put("online", online);
+        return Result.success(out);
+    }
+
+    @PostMapping("/records/{id}/parse-upload")
+    @Operation(summary = "上传自定义文件解析回填（pdf/xlsx/docx）")
+    public Result<Map<String, Object>> parseUpload(@PathVariable Long id,
+                                                   @RequestParam("file") MultipartFile file,
+                                                   Authentication auth) {
+        try {
+            return Result.success(agentService.parseAndFill(id, file, usernameOf(auth), isAdmin(auth)));
+        } catch (IllegalArgumentException e) {
+            return Result.error(400, e.getMessage());
+        } catch (Exception e) {
+            return Result.error(500, "解析失败：" + e.getMessage());
         }
     }
 

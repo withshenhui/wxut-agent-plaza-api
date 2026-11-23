@@ -1,6 +1,7 @@
 package com.wxut.agentplaza.service.form;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.wxut.agentplaza.service.SysConfigService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -32,7 +33,151 @@ import java.util.Set;
 public class FormParseService {
 
     private final FormLlmService llm;
+    private final SysConfigService configService;
     private final ObjectMapper om = new ObjectMapper();
+
+    /** 一体机 PDF 解析服务（后台可配，默认 245:8016；不可达自动回退本地 PDFBox） */
+    private String pdfServiceUrl() {
+        try {
+            String v = configService.getByKey("pdf.parse_url").getConfigValue();
+            return v == null ? "" : v.trim();
+        } catch (Exception e) { return ""; }
+    }
+
+    /**
+     * 抽取文档全文（记录解析回填用）。
+     * xlsx=逐行合并单元格；docx=表格行 + 段落；pdf=优先一体机解析服务，回退本地 PDFBox。
+     */
+    public String extractText(byte[] bytes, String fileName) throws Exception {
+        String lower = fileName == null ? "" : fileName.toLowerCase();
+        if (lower.endsWith(".pdf")) {
+            String via = pdfViaAppliance(bytes, fileName);
+            if (via != null && !via.trim().isEmpty()) return via;
+            try (PDDocument doc = PDDocument.load(bytes)) {
+                return new PDFTextStripper().getText(doc);
+            }
+        }
+        if (lower.endsWith(".docx")) {
+            StringBuilder sb = new StringBuilder();
+            try (XWPFDocument doc = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+                for (XWPFTable t : doc.getTables()) {
+                    for (XWPFTableRow row : t.getRows()) {
+                        StringBuilder line = new StringBuilder();
+                        for (XWPFTableCell c : row.getTableCells()) {
+                            String tx = c.getText() == null ? "" : c.getText().replaceAll("\\s+", " ").trim();
+                            if (!tx.isEmpty()) { if (line.length() > 0) line.append(" | "); line.append(tx); }
+                        }
+                        if (line.length() > 0) sb.append(line).append('\n');
+                    }
+                }
+                doc.getParagraphs().forEach(p -> {
+                    String t = p.getText();
+                    if (t != null && !t.trim().isEmpty()) sb.append(t.trim()).append('\n');
+                });
+            }
+            return sb.toString();
+        }
+        if (lower.endsWith(".xlsx")) {
+            StringBuilder sb = new StringBuilder();
+            try (XSSFWorkbook wb = new XSSFWorkbook(new ByteArrayInputStream(bytes))) {
+                int sheets = Math.min(wb.getNumberOfSheets(), 3);
+                for (int i = 0; i < sheets; i++) {
+                    XSSFSheet sheet = wb.getSheetAt(i);
+                    int last = Math.min(sheet.getLastRowNum(), 300);
+                    for (int r = sheet.getFirstRowNum(); r <= last; r++) {
+                        org.apache.poi.ss.usermodel.Row row = sheet.getRow(r);
+                        if (row == null) continue;
+                        StringBuilder line = new StringBuilder();
+                        for (int ci = 0; ci < row.getLastCellNum(); ci++) {
+                            String v = cellStr(row.getCell(ci));
+                            if (!v.isEmpty()) { if (line.length() > 0) line.append(" | "); line.append(v); }
+                        }
+                        if (line.length() > 0) sb.append(line).append('\n');
+                    }
+                }
+            }
+            return sb.toString();
+        }
+        throw new IllegalArgumentException("仅支持 .pdf / .xlsx / .docx 文件");
+    }
+
+    private static String cellStr(org.apache.poi.ss.usermodel.Cell cell) {
+        if (cell == null) return "";
+        try {
+            if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.STRING) return cell.getStringCellValue().trim();
+            if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.NUMERIC) {
+                double d = cell.getNumericCellValue();
+                return d == Math.floor(d) && !Double.isInfinite(d) ? String.valueOf((long) d) : String.valueOf(d);
+            }
+            if (cell.getCellType() == org.apache.poi.ss.usermodel.CellType.BOOLEAN) return String.valueOf(cell.getBooleanCellValue());
+        } catch (Exception ignore) {
+        }
+        return "";
+    }
+
+    /** 调用一体机 PDF 解析服务：POST 原始字节 + X-File-Name 头，响应 {"text": "..."}；失败返回 null */
+    private String pdfViaAppliance(byte[] bytes, String fileName) {
+        String url = pdfServiceUrl();
+        if (url.isEmpty()) return null;
+        java.net.HttpURLConnection conn = null;
+        try {
+            conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setConnectTimeout(2500);
+            conn.setReadTimeout(20000);
+            conn.setDoOutput(true);
+            conn.setRequestProperty("Content-Type", "application/octet-stream");
+            conn.setRequestProperty("X-File-Name",
+                    java.net.URLEncoder.encode(fileName == null ? "file.pdf" : fileName, "UTF-8"));
+            conn.getOutputStream().write(bytes);
+            int code = conn.getResponseCode();
+            if (code != 200) {
+                log.warn("一体机 PDF 解析返回 {}，回退本地 PDFBox", code);
+                return null;
+            }
+            java.io.InputStream in = conn.getInputStream();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            com.fasterxml.jackson.databind.JsonNode j = om.readTree(bos.toByteArray());
+            String text = j.path("text").asText("");
+            return text.trim().isEmpty() ? null : text;
+        } catch (Exception e) {
+            log.warn("一体机 PDF 解析不可达（{}），回退本地 PDFBox", e.getMessage());
+            return null;
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    /** 从文档文本抽取目标字段的值（LLM，仅依据文档内容，不编造） */
+    public Map<String, String> extractValues(String text, List<Map<String, Object>> fields) throws Exception {
+        List<String> want = new ArrayList<>();
+        for (Map<String, Object> f : fields) {
+            Object label = f.get("label");
+            if (label != null && !String.valueOf(label).trim().isEmpty()) want.add(String.valueOf(label));
+        }
+        if (want.isEmpty() || text == null || text.trim().isEmpty()) return new LinkedHashMap<>();
+        String body = text.length() > 6000 ? text.substring(0, 6000) : text;
+        String sys = "你是表单信息抽取器。根据给定的文档解析文本，为目标表格的每个字段抽取对应值。"
+                + "只依据文档内容，禁止编造推断；文档中没有对应内容的字段不要输出。"
+                + "输出严格 JSON 对象：{\"字段名\":\"值\"}，值为原文中的事实（数字只保留数字与单位，日期用原文格式），不要输出任何其他文字。";
+        String user = "目标字段：" + om.writeValueAsString(want) + "\n文档文本：\n" + body;
+        String out = llm.chat(sys, user);
+        String json = out == null ? "" : out.trim();
+        int a = json.indexOf('{'), b = json.lastIndexOf('}');
+        if (a >= 0 && b > a) json = json.substring(a, b + 1);
+        Map<String, String> vals = new LinkedHashMap<>();
+        com.fasterxml.jackson.databind.JsonNode node = om.readTree(json);
+        java.util.Iterator<Map.Entry<String, com.fasterxml.jackson.databind.JsonNode>> it = node.fields();
+        while (it.hasNext()) {
+            Map.Entry<String, com.fasterxml.jackson.databind.JsonNode> en = it.next();
+            String v = en.getValue().asText("");
+            if (!v.trim().isEmpty()) vals.put(en.getKey(), v.trim());
+        }
+        return vals;
+    }
 
     /** 从文件字节中抽取候选字段标签（保持出现顺序，去重，上限 80） */
     public List<String> extractLabels(byte[] bytes, String fileName) throws Exception {
