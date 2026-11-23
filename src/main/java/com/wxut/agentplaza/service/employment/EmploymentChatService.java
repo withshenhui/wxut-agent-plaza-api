@@ -81,6 +81,16 @@ public class EmploymentChatService {
         emitter.send(SseEmitter.event().name("tool")
                 .data("{\"message\":\"正在读取你的学籍信息并匹配岗位…\"}"));
 
+        // 首次使用（无任何意向记录）→ 推送意向引导卡（前端渲染可点选的 chips）
+        if (intent == null || intent.isEmpty()) {
+            try {
+                emitter.send(SseEmitter.event().name("guide").data(
+                        "{\"cities\":[\"无锡\",\"苏州\",\"南京\",\"上海\",\"不限\"],"
+                      + "\"types\":[\"全职\",\"实习\",\"都看\"],"
+                      + "\"pays\":[\"5K 以下\",\"5-8K\",\"8-12K\",\"12K 以上\",\"不限\"]}"));
+            } catch (Exception ignore) {}
+        }
+
         List<Map<String, Object>> rec;
         try {
             rec = employmentService.recommend(studentNo);
@@ -89,9 +99,14 @@ public class EmploymentChatService {
             rec = java.util.Collections.emptyList();
         }
 
-        String sys = "你是无锡职业技术大学的「智慧就业助手」。依据系统提供的真实推荐结果，用平实、鼓励的书面语气为学生解读推荐；"
-                + "必须包含一个 markdown 表格列出推荐岗位（列：岗位 | 公司 | 城市 | 薪资 | 来源 | 匹配分），来源列填写系统数据中每条岗位的 source 字段（如 91job）。表格后按匹配分从高到低逐条用一两句说明推荐理由与可选短板。"
-                + "严禁编造推荐结果之外的岗位、薪资或要求；数据缺失就如实省略。表格之后可给逐条解读。全文最后必须另起一行注明：本页岗位信息来自公开校招渠道，仅供参考，请以招聘单位官方发布为准。直接输出正文，不要标题和前言。";
+        // 岗位卡片数据（前端以卡片形式呈现，含来源与原文链接）
+        try { emitter.send(SseEmitter.event().name("jobs").data(om.writeValueAsString(rec))); } catch (Exception ignore) {}
+
+        String sys = "你是无锡职业技术大学的「智慧就业助手」。依据系统提供的真实推荐结果，用平实、鼓励的书面语气为学生解读推荐。"
+                + "重要：不要再输出岗位表格（岗位清单会以卡片形式展示在下方）；你的回复只需："
+                + "①开头一句总述（结合学生的专业/年级与就业意向）；②按匹配分从高到低逐条解读（每条：岗位名 + 为什么推荐 + 可以补的短板，两三句）；"
+                + "③结尾一句：岗位信息来自公开校招渠道，仅供参考，以招聘单位官方发布为准。"
+                + "严禁编造推荐结果之外的岗位、薪资或要求；数据缺失就如实省略。直接输出正文，不要标题和前言。";
         String user = "学生画像：" + om.writeValueAsString(profile)
                 + "\n就业意向：" + om.writeValueAsString(intent == null ? java.util.Collections.emptyMap() : intent)
                 + "\n系统推荐结果（真实岗位，按匹配分排序）：" + om.writeValueAsString(rec)
