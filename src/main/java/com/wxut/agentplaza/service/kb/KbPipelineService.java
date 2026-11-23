@@ -40,6 +40,10 @@ public class KbPipelineService {
     private final ObjectMapper om = new ObjectMapper();
 
     private final BlockingQueue<Long> queue = new LinkedBlockingQueue<Long>();
+    /** QA 看门狗：单次 LLM 调用墙钟上限（cached 池避免卡死线程阻塞后续块） */
+    private static final java.util.concurrent.ExecutorService QA_EXEC =
+            java.util.concurrent.Executors.newCachedThreadPool();
+    private static final long QA_CALL_CAP_MS = 90000L;
     private volatile boolean started = false;
 
     public KbPipelineService(KbFileMapper fileMapper, KbChunkMapper chunkMapper, KbMapper kbMapper,
@@ -115,25 +119,45 @@ public class KbPipelineService {
             chunkMapper.delete(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<KbChunk>()
                     .eq("file_id", fileId));
 
-            // qa generation (best-effort, per chunk 2-3 pairs)
+            // qa generation (best-effort, per chunk 2-3 pairs; 4 路并发 + 进度回写 stage)
             stage(f, "qa");
+            final String docName = f.getName();
+            java.util.concurrent.ExecutorService qaPool =
+                    java.util.concurrent.Executors.newFixedThreadPool(4);
+            List<java.util.concurrent.Future<List<String[]>>> qaFuts =
+                    new ArrayList<java.util.concurrent.Future<List<String[]>>>();
+            for (KbChunker.Chunk c : pieces) {
+                qaFuts.add(qaPool.submit(() -> generateQa(docName, c)));
+            }
             List<String> qaContents = new ArrayList<String>();
             List<String> qaQuestions = new ArrayList<String>();
             List<String> qaDocs = new ArrayList<String>();
-            for (KbChunker.Chunk c : pieces) {
-                List<String[]> pairs = generateQa(f.getName(), c);
-                for (String[] p : pairs) {
-                    qaQuestions.add(p[0]);
-                    qaContents.add(p[0] + "\n" + p[1]);
-                    qaDocs.add(clauseOr(c));
+            try {
+                for (int i = 0; i < qaFuts.size(); i++) {
+                    List<String[]> pairs = java.util.Collections.emptyList();
+                    try { pairs = qaFuts.get(i).get(); }
+                    catch (Exception e) { log.warn("qa future failed #{}: {}", i, e.getMessage()); }
+                    for (String[] p : pairs) {
+                        qaQuestions.add(p[0]);
+                        qaContents.add(p[0] + "\n" + p[1]);
+                        qaDocs.add(clauseOr(pieces.get(i)));
+                    }
+                    stage(f, "qa:" + (i + 1) + "/" + qaFuts.size());
                 }
-            }
+            } finally { qaPool.shutdownNow(); }
 
             stage(f, "embed");
             List<String> toEmbed = new ArrayList<String>();
             for (KbChunker.Chunk c : pieces) toEmbed.add(c.text);
             toEmbed.addAll(qaContents);
-            List<float[]> vectors = embedding.embed(toEmbed);
+            // 分段嵌入 + 进度回写（内部 BATCH_LIMIT=1 串行，外层分段只为进度可见）
+            List<float[]> vectors = new ArrayList<float[]>();
+            final int ETOT = toEmbed.size();
+            for (int i = 0; i < ETOT; i += 25) {
+                int end = Math.min(ETOT, i + 25);
+                vectors.addAll(embedding.embed(toEmbed.subList(i, end)));
+                stage(f, "embed:" + end + "/" + ETOT);
+            }
 
             stage(f, "store");
             int seq = 0;
@@ -187,27 +211,40 @@ public class KbPipelineService {
 
     private List<String[]> generateQa(String docName, KbChunker.Chunk c) {
         List<String[]> out = new ArrayList<String[]>();
+        final String system = "你是制度文档问答对生成器。对给出的制度条款片段生成2-3条校园场景问答对。"
+                + "问题用老师或学生自然会问的口语；答案严格来自原文不得编造并保留条款号；"
+                + "每条一行 JSON：{\"q\":\"...\",\"a\":\"...\"}，不要输出其他内容。";
+        final String user = "文档：" + docName + "\n条款片段：" + c.text;
+        String resp;
+        java.util.concurrent.Future<String> fut = null;
         try {
-            String system = "你是制度文档问答对生成器。对给出的制度条款片段生成2-3条校园场景问答对。"
-                    + "问题用老师或学生自然会问的口语；答案严格来自原文不得编造并保留条款号；"
-                    + "每条一行 JSON：{\"q\":\"...\",\"a\":\"...\"}，不要输出其他内容。";
-            String user = "文档：" + docName + "\n条款片段：" + c.text;
-            String resp = llm.chat(system, user);
-            for (String line : resp.split("\n")) {
-                line = line.trim();
-                if (line.startsWith("{")) {
-                    try {
-                        JsonNode n = om.readTree(line);
-                        String q = n.path("q").asText(""), a = n.path("a").asText("");
-                        if (!q.isEmpty() && !a.isEmpty()) out.add(new String[]{q, a});
-                    } catch (Exception ignore) {}
-                }
-            }
+            fut = QA_EXEC.submit(() -> llm.chat(system, user));
+            resp = fut.get(QA_CALL_CAP_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException te) {
+            // 看门狗：LLM 服务端偶发收请求不回数据（SSL 滴流使 60s readTimeout 不触发，
+            // 实测线程可挂 40+ 分钟）。超时弃单走下一块，卡住的线程随 socket 断开自然回收。
+            if (fut != null) fut.cancel(true);
+            log.warn("qa generation watchdog timeout ({}s) for {} ({}), skip this chunk",
+                    QA_CALL_CAP_MS / 1000, docName, c.clauseNo);
+            return out;
         } catch (Exception e) {
             log.warn("qa generation skipped for {} ({}): {}", docName, c.clauseNo, e.getMessage());
+            return out;
+        }
+        for (String line : resp.split("\n")) {
+            line = line.trim();
+            if (line.startsWith("{")) {
+                try {
+                    JsonNode n = om.readTree(line);
+                    String q = n.path("q").asText(""), a = n.path("a").asText("");
+                    if (!q.isEmpty() && !a.isEmpty()) out.add(new String[]{q, a});
+                } catch (Exception ignore) {}
+            }
         }
         return out;
     }
+
+
 
     /** Remove repeated blank lines, BOM, page-number-only lines. */
     static String clean(String raw) {
@@ -231,11 +268,23 @@ public class KbPipelineService {
         fileMapper.updateById(f);
     }
 
+    /** 重算库级计数（按 kb_chunk 实际聚合）——重建索引会删旧块再入库，
+     *  纯累加会把库计数翻倍，重算天然幂等。注意 selectMaps 才返回多列 */
     private void bumpKb(Long kbId, int chunks, int qas) {
         Kb kb = kbMapper.selectById(kbId);
         if (kb == null) return;
-        kb.setChunkCount((kb.getChunkCount() == null ? 0 : kb.getChunkCount()) + chunks);
-        kb.setQaCount((kb.getQaCount() == null ? 0 : kb.getQaCount()) + qas);
+        java.util.List<java.util.Map<String, Object>> agg = chunkMapper.selectMaps(
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<KbChunk>()
+                        .select("chunk_type AS t", "COUNT(*) AS n").eq("kb_id", kbId).groupBy("chunk_type"));
+        int nRaw = 0, nQa = 0;
+        for (java.util.Map<String, Object> row : agg) {
+            String t = String.valueOf(row.get("t"));
+            int n = row.get("n") == null ? 0 : ((Number) row.get("n")).intValue();
+            if ("raw".equals(t)) nRaw = n;
+            else if ("qa".equals(t)) nQa = n;
+        }
+        kb.setChunkCount(nRaw);
+        kb.setQaCount(nQa);
         kbMapper.updateById(kb);
     }
 }

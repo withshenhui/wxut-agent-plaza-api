@@ -203,6 +203,29 @@ public class KbController {
         return Result.success(f.getId());
     }
 
+    /** 我可见各库中处理中的文件（异步处理追踪：前端跨页面轮询 + 完成提示） */
+    @GetMapping("/processing")
+    public Result<List<Map<String, Object>>> processing(Authentication auth) {
+        SysUser u = userOf(auth);
+        if (u == null) return Result.error(401, "未登录");
+        List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        for (Kb kb : kbMapper.selectList(new QueryWrapper<Kb>())) {
+            if (!canRead(kb, u, auth)) continue;
+            for (KbFile f : fileMapper.selectList(new QueryWrapper<KbFile>()
+                    .eq("kb_id", kb.getId()).in("status", "pending", "processing"))) {
+                Map<String, Object> m = new HashMap<String, Object>();
+                m.put("kbId", kb.getId());
+                m.put("kbName", kb.getName());
+                m.put("fileId", f.getId());
+                m.put("name", f.getName());
+                m.put("status", f.getStatus());
+                m.put("stage", f.getStage());
+                out.add(m);
+            }
+        }
+        return Result.success(out);
+    }
+
     @GetMapping("/{kbId}/files")
     public Result<List<Map<String, Object>>> files(@PathVariable Long kbId, Authentication auth) {
         SysUser u = userOf(auth);
@@ -281,6 +304,32 @@ public class KbController {
         }
     }
 
+    /** 文件问答对预览：该文件流水线生成的 QA 对列表（文件表"问答对"列的预览入口） */
+    @GetMapping("/{kbId}/files/{fileId}/qa")
+    public Result<List<Map<String, Object>>> fileQa(@PathVariable Long kbId, @PathVariable Long fileId,
+                                                    Authentication auth) {
+        SysUser u = userOf(auth);
+        if (u == null) return Result.error(401, "未登录");
+        Kb kb = kbMapper.selectById(kbId);
+        if (kb == null || !canRead(kb, u, auth)) return Result.error(403, "无权访问该知识库");
+        KbFile f = fileMapper.selectById(fileId);
+        if (f == null || !kbId.equals(f.getKbId())) return Result.error(404, "文件不存在或已删除");
+        List<Map<String, Object>> out = new ArrayList<Map<String, Object>>();
+        for (KbChunk c : chunkMapper.selectList(new QueryWrapper<KbChunk>()
+                .eq("file_id", fileId).eq("chunk_type", "qa").orderByAsc("seq").last("LIMIT 1000"))) {
+            String q = c.getQaQuestion() == null ? "" : c.getQaQuestion();
+            String content = c.getContent() == null ? "" : c.getContent();
+            String a = content.startsWith(q) && content.length() > q.length()
+                    ? content.substring(q.length()).trim() : content;
+            Map<String, Object> m = new HashMap<String, Object>();
+            m.put("q", q);
+            m.put("a", a);
+            m.put("clause", c.getClauseNo() == null ? "" : c.getClauseNo());
+            out.add(m);
+        }
+        return Result.success(out);
+    }
+
     /** sendError 会被 Spring Boot 错误页吞掉 message，前端拿不到原因——直接写 JSON */
     private void jsonError(javax.servlet.http.HttpServletResponse response, int code, String msg) throws Exception {
         response.setStatus(code);
@@ -348,7 +397,12 @@ public class KbController {
         }
 
         List<Long> kbIds = new ArrayList<Long>();
-        if ("personal".equals(scope)) {
+        if ("public".equals(scope)) {
+            // 公共知识库（is_shared）：跨智能体共享的常识内容（学校简介等）
+            for (Kb kb : kbMapper.selectList(new QueryWrapper<Kb>().eq("is_shared", 1))) {
+                kbIds.add(kb.getId());
+            }
+        } else if ("personal".equals(scope)) {
             if (userId == null) return Result.error(401, "personal scope 需要 X-User-Id");
             for (Kb kb : kbMapper.selectList(new QueryWrapper<Kb>()
                     .eq("owner_user_id", userId).eq("visibility", "private"))) {

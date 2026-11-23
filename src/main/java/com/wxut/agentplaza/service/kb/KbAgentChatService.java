@@ -63,6 +63,10 @@ public class KbAgentChatService {
                     if (!kbIds.contains(kb.getId())) kbIds.add(kb.getId());
                 }
             }
+            // 公共知识库（is_shared）：学校简介等公共内容对所有智能体生效，自动并入检索范围
+            for (Kb kb : kbMapper.selectList(new QueryWrapper<Kb>().eq("is_shared", 1))) {
+                if (!kbIds.contains(kb.getId())) kbIds.add(kb.getId());
+            }
             if (kbIds.isEmpty()) {
                 emitter.send(SseEmitter.event().name("error").data("{\"message\":\"该智能体未绑定知识库\"}"));
                 emitter.complete();
