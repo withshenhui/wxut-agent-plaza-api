@@ -31,33 +31,33 @@ public class PermissionServiceImpl implements PermissionService {
     /** 进程内缓存（量小；权限变更走 evict） */
     private final Map<Long, Set<String>> cache = new ConcurrentHashMap<>();
 
-    /** 功能权限全放开（2026-11-22 起只管数据范围）：所有登录用户默认拥有全部前台功能；
+    /** 功能权限：普通用户默认不含 dev.entry（开发平台需授权，走 sys_user_perm 单独加授）；
      * 数据边界统一由 scope()（学院归属）控制，全校锡锡随数据范围走 */
     public static final Set<String> USER_DEFAULT = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "plaza.view", "chat.college", "teacher.form", "kb.use", "dev.entry",
-            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.export"
+            "plaza.view", "chat.college", "teacher.form", "kb.use",
+            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export"
     )));
 
     /** 辅导员（t_xg_fdy 命中）自动加授 */
     public static final Set<String> FDY_GRANTS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
-            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.export"
+            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export"
     )));
 
     public static final Set<String> COLLEGE_ADMIN_DEFAULT = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "plaza.view", "chat.college", "teacher.form", "kb.use", "dev.entry",
-            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.export",
+            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export",
             "admin.dashboard"
     )));
 
     public static final Set<String> LEADER_DEFAULT = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "plaza.view", "chat.college", "chat.all",
-            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.export",
+            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export",
             "teacher.form", "kb.use", "dev.entry"
     )));
 
     public static final Set<String> ADMIN_DEFAULT = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
             "plaza.view", "chat.college", "chat.all",
-            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.export",
+            "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export",
             "teacher.form", "kb.use", "dev.entry",
             "admin.dashboard", "admin.agent", "admin.model", "admin.user", "admin.config", "admin.file", "admin.log", "admin.xixi"
     )));
