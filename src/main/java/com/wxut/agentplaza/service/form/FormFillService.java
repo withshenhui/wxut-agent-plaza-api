@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -72,6 +73,7 @@ public class FormFillService {
                 f.put("val", text);
                 record.setFieldsJson(om.writeValueAsString(fields));
                 record.setFillCount(countFilled(fields));
+                record.setUpdatedAt(LocalDateTime.now());
                 recordMapper.updateById(record);
                 se.send(evt("done", "index", index));
                 se.complete();
@@ -200,6 +202,7 @@ public class FormFillService {
         record.setFillCount(filled);
         record.setTotalCount(total);
         record.setStatus(status);
+        record.setUpdatedAt(LocalDateTime.now());
         recordMapper.updateById(record);
 
         emitter.send(evt("done", "fillCount", filled, "total", total, "status", status));
@@ -229,7 +232,7 @@ public class FormFillService {
     }
 
     /** 素材 AI 填写：按维度结合数仓事实生成要点（每行一条），仅供预填，不直接覆盖用户内容 */
-    public String aiMaterial(String teacherId, String teacherName, String fieldKey, String fieldLabel, String current) {
+    public String aiMaterial(String teacherId, String teacherName, String fieldKey, String fieldLabel, String current, String memoryHistory) {
         Map<String, Object> profile = warehouse.getProfile(teacherId, teacherName);
         String khnf = assessYear();
         String dim;
@@ -246,6 +249,8 @@ public class FormFillService {
         String user = "考核年度：" + khnf + "。栏目：" + fieldLabel + "。" + dim
                 + "\n教师数仓事实（JSON）：" + jsonOf(profile)
                 + (current == null || current.trim().isEmpty() ? "" : "\n\n教师已写的要点（参考语气与侧重，可补充但不要重复）：\n" + current.trim())
+                + (memoryHistory == null || memoryHistory.trim().isEmpty() ? ""
+                    : "\n\n教师上次在该栏目的填写内容（仅供参考语气与结构，须按本年度事实更新，不要照抄）：\n" + memoryHistory.trim())
                 + "\n\n输出 3-6 条要点，每行一条。";
         try {
             String text = llm.chat(sys, user).trim();
@@ -265,7 +270,8 @@ public class FormFillService {
         String brief = FormFieldCatalog.narrativeBrief(key);
         boolean isSummary = "summary1".equals(key);
         String sys = "你是高校教师填报材料撰写助手。只依据用户提供的事实数据与素材撰写，禁止编造任何数字、荣誉或经历；"
-                + "事实数据中没有的信息直接略过，不要用“某”“若干”等占位。语言平实书面化。直接输出正文，不要输出任何前缀、标题或说明。";
+                + "事实数据中没有的信息直接略过，不要用“某”“若干”等占位。语言平实书面化。直接输出正文，不要输出任何前缀、标题或说明。"
+                + "个性化红线：有事实数据的维度详写、无数据的维度一句话带过；禁止输出大段与本人无关的通用政治套话和可套用于任何人的模板段落；不同教师的材料必须体现本人岗位与数据的差异。";
         String user = "本次填报的考核年度：" + khnf + "年（行文提及年度时以此为准）。栏目：" + label + "。写作要求：" + brief + "。"
                 + "教师事实数据（JSON）：" + jsonOf(profile)
                 + (isSummary ? "\n\n教师提供的分节素材要点（优先使用，逐条落实；未提供的部分用通用表述带过）：\n" + materialsOf(record) : "");

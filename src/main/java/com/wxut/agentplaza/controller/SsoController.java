@@ -7,6 +7,7 @@ import com.wxut.agentplaza.entity.SysUser;
 import com.wxut.agentplaza.mapper.SysUserMapper;
 import com.wxut.agentplaza.security.JwtTokenProvider;
 import com.wxut.agentplaza.service.AuthService;
+import com.wxut.agentplaza.service.PermissionService;
 import com.wxut.agentplaza.service.SsoTicketStore;
 import com.wxut.agentplaza.vo.TicketVO;
 import com.wxut.agentplaza.vo.UsernameVO;
@@ -39,6 +40,7 @@ public class SsoController {
     private final JwtTokenProvider jwtTokenProvider;
     private final SysUserMapper sysUserMapper;
     private final CasOriginResolver originResolver;
+    private final PermissionService permissionService;
 
     /** 锡锡平台前端错误回跳地址 */
     private static final String XIXI_FRONT_END = "http://210.28.144.49:8002";
@@ -104,25 +106,17 @@ public class SsoController {
             }
 
             if ("dify".equals(app)) {
-                String difyCallback = ssoProperties.getCallbacks().get("dify");
-                if (difyCallback == null || difyCallback.isEmpty()) {
-                    log.error("SSO entry: dify callback not configured (sso.callbacks.dify)");
-                    response.sendError(500, "dify callback not configured");
+                // 开发平台入口权限强制：dev.entry 实行申请开通制（由所在学院/部门向信息化与
+                // 数据服务中心申请）。有 CAS 账号 ≠ 有开发平台权限；URL 直打同样拦截（纵深防御）。
+                if (!permissionService.has(user.getId(), "dev.entry")) {
+                    log.warn("SSO entry dify denied: uid={} has no dev.entry perm", uid);
+                    response.sendError(403, "智能体开发平台实行申请开通制：请由所在学院/部门向信息化与数据服务中心申请，开通后使用开发者账号登录。");
                     return;
                 }
-                String ticket = ticketStore.create(user.getUsername(), user.getNickname());
-                StringBuilder url = new StringBuilder(difyCallback)
-                        .append("?ticket=")
-                        .append(URLEncoder.encode(ticket, StandardCharsets.UTF_8.name()));
-                // 落地页透传：仅接受站内相对路径（防开放重定向），如 /datasets 直达 Dify 知识库
-                String redirect = request.getParameter("redirect");
-                if (redirect != null && !redirect.isEmpty()
-                        && redirect.startsWith("/") && !redirect.startsWith("//")) {
-                    url.append("&redirect=")
-                       .append(URLEncoder.encode(redirect, StandardCharsets.UTF_8.name()));
-                }
-                response.sendRedirect(url.toString());
-                log.info("SSO entry: uid={} -> ticket issued for dify", uid);
+                // 开发平台不走 Dify passport 单点票据（回调已下线）：跳转到平台登录页，
+                // 由信息中心开通的开发者账号登录。
+                response.sendRedirect("https://aiagent.wxut.edu.cn/apps");
+                log.info("SSO entry: uid={} -> dev platform (account login, no sso ticket)", uid);
                 return;
             }
 

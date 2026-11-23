@@ -95,22 +95,60 @@ public class KbAgentChatService {
                     .data("{\"message\":\"正在检索知识库…\"}"));
 
             List<KbSearchService.Hit> hits = searchService.search(kbIds, q, 5);
+            // 同一文档命中多个片段时合并为一个引用编号（正文只出现一次该文档）；
+            // ctx 中把同文档各片段拼接在同一个 [n] 下，LLM 可见的资料内容不减少。
             List<Citation> citations = new ArrayList<Citation>();
-            StringBuilder ctx = new StringBuilder();
-            int n = 1;
+            List<String> ctxParts = new ArrayList<String>();
+            java.util.Map<String, Integer> idxByDoc = new java.util.HashMap<String, Integer>();
+            java.util.Map<Integer, java.util.LinkedHashSet<String>> locParts = new java.util.HashMap<Integer, java.util.LinkedHashSet<String>>();
             for (KbSearchService.Hit h : hits) {
-                Citation c = new Citation();
-                c.no = n;
-                c.type = h.type; c.doc = h.doc; c.loc = h.loc;
-                c.q = h.q; c.a = h.a; c.txt = h.txt;
-                citations.add(c);
-                ctx.append('[').append(n).append("] ");
-                if ("qa".equals(h.type)) {
-                    ctx.append("问：").append(h.q).append("\n答：").append(h.a).append("\n\n");
+                String key = h.doc == null || h.doc.trim().isEmpty() ? "__hit_" + citations.size() : h.doc.trim();
+                String body = "qa".equals(h.type) ? ("问：" + h.q + "\n答：" + h.a) : h.txt;
+                Integer idx = idxByDoc.get(key);
+                if (idx == null) {
+                    Citation c = new Citation();
+                    c.no = citations.size() + 1;
+                    c.type = h.type; c.doc = h.doc; c.loc = h.loc;
+                    c.q = h.q; c.a = h.a; c.txt = h.txt;
+                    citations.add(c);
+                    idxByDoc.put(key, citations.size() - 1);
+                    ctxParts.add(body);
+                    java.util.LinkedHashSet<String> ls = new java.util.LinkedHashSet<String>();
+                    if (h.loc != null && !h.loc.isEmpty()) ls.add(h.loc);
+                    locParts.put(citations.size() - 1, ls);
                 } else {
-                    ctx.append(h.txt).append("\n\n");
+                    Citation c = citations.get(idx);
+                    ctxParts.set(idx, ctxParts.get(idx) + "\n" + body);
+                    if (c.txt == null || (h.txt != null && h.txt.length() > c.txt.length())) c.txt = h.txt;
+                    if (h.loc != null && !h.loc.isEmpty()) locParts.get(idx).add(h.loc);
                 }
-                n++;
+            }
+            // 合并后 loc：去重 + 相同前缀折叠（"第四章 … · 第十五条、第十八条"，不再重复罗列章节）
+            for (int i = 0; i < citations.size(); i++) {
+                java.util.List<String> ps = new ArrayList<String>(locParts.get(i));
+                if (ps.isEmpty()) { citations.get(i).loc = null; continue; }
+                String merged;
+                int cut = ps.get(0).indexOf(" · ");
+                boolean sharePrefix = cut > 0;
+                if (sharePrefix) {
+                    String common = ps.get(0).substring(0, cut);
+                    for (String p : ps) if (!p.startsWith(common + " · ")) { sharePrefix = false; break; }
+                }
+                if (sharePrefix) {
+                    StringBuilder sb = new StringBuilder(ps.get(0).substring(0, cut)).append(" · ");
+                    for (int j = 0; j < ps.size(); j++) {
+                        if (j > 0) sb.append('、');
+                        sb.append(ps.get(j).substring(ps.get(0).indexOf(" · ") + 3));
+                    }
+                    merged = sb.toString();
+                } else {
+                    merged = String.join("、", ps);
+                }
+                citations.get(i).loc = merged.length() > 80 ? merged.substring(0, 80) : merged;
+            }
+            StringBuilder ctx = new StringBuilder();
+            for (int i = 0; i < citations.size(); i++) {
+                ctx.append('[').append(citations.get(i).no).append("] ").append(ctxParts.get(i)).append("\n\n");
             }
 
             String system = "你是\"" + agent.getName() + "\"，无锡职业技术大学的制度问答智能体。仅依据下面给出的参考资料回答；"

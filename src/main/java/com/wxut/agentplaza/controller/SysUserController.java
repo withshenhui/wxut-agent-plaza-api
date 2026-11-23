@@ -1,16 +1,26 @@
 package com.wxut.agentplaza.controller;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wxut.agentplaza.annotation.OperationLog;
 import com.wxut.agentplaza.common.PageResult;
 import com.wxut.agentplaza.common.Result;
 import com.wxut.agentplaza.dto.UserDTO;
 import com.wxut.agentplaza.entity.SysUser;
+import com.wxut.agentplaza.entity.SysUserPerm;
+import com.wxut.agentplaza.mapper.SysUserPermMapper;
+import com.wxut.agentplaza.service.PermissionService;
 import com.wxut.agentplaza.service.SysUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Set;
 
 @Tag(name = "用户管理")
 @RestController
@@ -19,6 +29,12 @@ import org.springframework.web.bind.annotation.*;
 public class SysUserController {
 
     private final SysUserService userService;
+    private final PermissionService permissionService;
+    private final SysUserPermMapper permMapper;
+
+    /** 允许后台逐人加授/剥夺的功能权限（申请开通制类入口） */
+    private static final Set<String> GRANTABLE_PERMS = Collections.unmodifiableSet(
+            new HashSet<>(Arrays.asList("dev.entry")));
 
     @GetMapping
     @Operation(summary = "获取用户列表")
@@ -56,6 +72,49 @@ public class SysUserController {
     @OperationLog("重置用户密码")
     public Result<Void> resetPassword(@PathVariable Long id, @RequestParam String password) {
         userService.resetPassword(id, password);
+        return Result.success();
+    }
+
+    @GetMapping("/{id}/perms")
+    @Operation(summary = "用户全部功能权限（角色默认 + 个人加授/剥夺）")
+    public Result<Set<String>> perms(@PathVariable Long id) {
+        return Result.success(permissionService.perms(id));
+    }
+
+    /**
+     * 单项功能权限加授/剥夺（sys_user_perm upsert），用于申请开通制入口的人工授权：
+     * 如 dev.entry（智能体开发平台）——老师由所在学院/部门向信息化与数据服务中心申请，
+     * 审核通过后在此勾选开通。
+     */
+    @PutMapping("/{id}/perm")
+    @Operation(summary = "设置用户单项功能权限（加授/剥夺）")
+    @OperationLog("设置用户功能权限")
+    public Result<Void> setPerm(@PathVariable Long id, @RequestParam String permKey,
+                                @RequestParam boolean granted) {
+        if (!GRANTABLE_PERMS.contains(permKey)) {
+            return Result.error(400, "该权限项不支持后台设置：" + permKey);
+        }
+        SysUser u = userService.getUserById(id);
+        if (u == null) {
+            return Result.error(404, "用户不存在");
+        }
+        SysUserPerm existing = permMapper.selectOne(new LambdaQueryWrapper<SysUserPerm>()
+                .eq(SysUserPerm::getUserId, id).eq(SysUserPerm::getPermKey, permKey));
+        int flag = granted ? 1 : 0;
+        if (existing == null) {
+            SysUserPerm p = new SysUserPerm();
+            p.setUserId(id);
+            p.setPermKey(permKey);
+            p.setGranted(flag);
+            p.setSource("manual");
+            p.setCreatedAt(LocalDateTime.now());
+            permMapper.insert(p);
+        } else {
+            existing.setGranted(flag);
+            existing.setSource("manual");
+            permMapper.updateById(existing);
+        }
+        permissionService.evict(id);
         return Result.success();
     }
 

@@ -11,6 +11,7 @@ import com.wxut.agentplaza.service.SysOperationLogService;
 import com.wxut.agentplaza.service.form.FormAgentService;
 import com.wxut.agentplaza.service.form.FormExportService;
 import com.wxut.agentplaza.service.form.FormFillService;
+import com.wxut.agentplaza.service.form.FormMemoryService;
 import com.wxut.agentplaza.service.form.FormWarehouseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,6 +42,7 @@ public class FormAgentController {
     private final FormFillService fillService;
     private final FormWarehouseService warehouseService;
     private final FormExportService exportService;
+    private final FormMemoryService memoryService;
     private final SysOperationLogService logService;
     private final com.wxut.agentplaza.service.SysConfigService sysConfigService;
     private final FormRecordMapper recordMapper;
@@ -161,6 +163,23 @@ public class FormAgentController {
         if (!usernameOf(auth).equals(r.getCreatedBy())) throw new IllegalArgumentException("无权操作他人记录");
     }
 
+    // ================= 填报记忆（User Memory：智能预填数据源） =================
+
+    @GetMapping("/memory")
+    @Operation(summary = "本人填报记忆（可按模板过滤，供智能预填）")
+    public Result<List<Map<String, Object>>> memory(Authentication auth,
+                                                    @RequestParam(required = false) Long templateId) {
+        return Result.success(memoryService.list(usernameOf(auth), templateId));
+    }
+
+    @DeleteMapping("/memory")
+    @Operation(summary = "清空本人填报记忆")
+    public Result<Void> clearMemory(Authentication auth) {
+        memoryService.clear(usernameOf(auth));
+        logService.save(opLog(usernameOf(auth), "配置", "智能填报", "清空填报记忆"));
+        return Result.success();
+    }
+
     @PostMapping("/ai-material")
     @Operation(summary = "素材 AI 填写（按维度结合数仓事实起草要点；仅登录本人）")
     public Result<Map<String, Object>> aiMaterial(@RequestBody Map<String, Object> body, Authentication auth) {
@@ -174,9 +193,16 @@ public class FormAgentController {
             String key = body.get("fieldKey") == null ? "" : String.valueOf(body.get("fieldKey"));
             String label = body.get("fieldLabel") == null ? "" : String.valueOf(body.get("fieldLabel"));
             String current = body.get("current") == null ? "" : String.valueOf(body.get("current"));
+            Long tplId = null;
+            try {
+                if (body.get("templateId") != null) tplId = Long.valueOf(String.valueOf(body.get("templateId")));
+            } catch (Exception ignore) {
+            }
+            // 记忆增强：把该用户该字段上次填写的内容作为起草参考
+            String memoryHistory = memoryService.valueOf(u.getUsername(), tplId, key);
             String text = fillService.aiMaterial(u.getUsername(),
                     u.getNickname() == null || u.getNickname().isEmpty() ? u.getUsername() : u.getNickname(),
-                    key, label, current);
+                    key, label, current, memoryHistory);
             logService.save(opLog(u.getUsername(), "使用", "智能填报",
                     "素材AI填写 · " + label));
             Map<String, Object> out = new java.util.LinkedHashMap<>();
@@ -246,12 +272,14 @@ public class FormAgentController {
             } catch (Exception ignore) {
             }
             if (u == null) return Result.error(401, "请先登录");
+            Long tplId = Long.valueOf(String.valueOf(body.get("templateId")));
             Long id = agentService.createRecord(
                     body.get("name") == null ? null : String.valueOf(body.get("name")),
-                    Long.valueOf(String.valueOf(body.get("templateId"))),
+                    tplId,
                     u.getNickname() == null || u.getNickname().isEmpty() ? u.getUsername() : u.getNickname(),
                     u.getUsername(), // 工号=登录账号，仅可为本人填报
                     fields, u.getUsername());
+            memoryService.remember(u.getUsername(), tplId, fields);
             logService.save(opLog(u.getUsername(), "使用", "智能填报",
                     "新建填报记录（本人）· 模板ID " + body.get("templateId")));
             return Result.success(id);
@@ -266,6 +294,15 @@ public class FormAgentController {
                                      Authentication auth) {
         try {
             agentService.updateRecord(id, body, usernameOf(auth), isAdmin(auth));
+            // 记忆落库：把本记录各字段内容沉淀到记录所有者名下（供下次智能预填）
+            if (body.get("fields") instanceof List) {
+                FormRecord rec = recordMapper.selectById(id);
+                if (rec != null) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> fs = (List<Map<String, Object>>) body.get("fields");
+                    memoryService.remember(rec.getCreatedBy(), rec.getTemplateId(), fs);
+                }
+            }
             return Result.success();
         } catch (IllegalArgumentException e) {
             return Result.error(403, e.getMessage());
