@@ -27,6 +27,20 @@ public class EmploymentChatService {
     private final FormLlmService llm;
     private final com.fasterxml.jackson.databind.ObjectMapper om = new com.fasterxml.jackson.databind.ObjectMapper();
 
+    private static final String[] JS_CITIES = {"南京", "无锡", "苏州", "徐州", "常州", "南通", "连云港", "淮安", "盐城", "扬州", "镇江", "泰州", "宿迁"};
+
+    /** 从用户话里规则提取意向（城市/岗位类型），用于"对话即填报" */
+    static Map<String, Object> extractIntent(String q) {
+        Map<String, Object> m = new java.util.LinkedHashMap<String, Object>();
+        if (q == null) return m;
+        for (String c : JS_CITIES) {
+            if (q.contains(c)) { m.put("city", "[\"" + c + "\"]"); break; }
+        }
+        if (q.contains("实习")) m.put("jobType", "intern");
+        else if (q.contains("全职")) m.put("jobType", "fulltime");
+        return m;
+    }
+
     private static final Pattern GREET = Pattern.compile("^(你好|您好|hi|hello|在吗|嗨|哈喽|早上好|中午好|下午好|晚上好)[!！。~～\\s]*$", Pattern.CASE_INSENSITIVE);
     private static final Pattern META = Pattern.compile("(你是谁|你叫什么|介绍一下你|能做什么|有什么功能|怎么用)");
 
@@ -56,6 +70,13 @@ public class EmploymentChatService {
 
         Map<String, Object> profile = employmentService.profile(studentNo);
         Map<String, Object> intent = employmentService.getIntent(studentNo);
+        // 对话即填报：从当前这句话中规则提取意向并合并落库（学生随口说偏好 = 意向收集）
+        Map<String, Object> patch = extractIntent(q);
+        if (!patch.isEmpty()) {
+            Map<String, Object> merged = intent == null ? new java.util.LinkedHashMap<String, Object>() : new java.util.LinkedHashMap<String, Object>(intent);
+            merged.putAll(patch);
+            try { employmentService.saveIntent(studentNo, merged); intent = employmentService.getIntent(studentNo); } catch (Exception ignore) {}
+        }
 
         emitter.send(SseEmitter.event().name("tool")
                 .data("{\"message\":\"正在读取你的学籍信息并匹配岗位…\"}"));
@@ -69,8 +90,8 @@ public class EmploymentChatService {
         }
 
         String sys = "你是无锡职业技术大学的「智慧就业助手」。依据系统提供的真实推荐结果，用平实、鼓励的书面语气为学生解读推荐；"
-                + "必须包含一个 markdown 表格列出推荐岗位（列：岗位 | 公司 | 城市 | 薪资 | 匹配分），表格后按匹配分从高到低逐条用一两句说明推荐理由与可选短板。"
-                + "严禁编造推荐结果之外的岗位、薪资或要求；数据缺失就如实省略。直接输出正文，不要标题和前言。";
+                + "必须包含一个 markdown 表格列出推荐岗位（列：岗位 | 公司 | 城市 | 薪资 | 来源 | 匹配分），来源列填写系统数据中每条岗位的 source 字段（如 91job）。表格后按匹配分从高到低逐条用一两句说明推荐理由与可选短板。"
+                + "严禁编造推荐结果之外的岗位、薪资或要求；数据缺失就如实省略。表格之后可给逐条解读。全文最后必须另起一行注明：本页岗位信息来自公开校招渠道，仅供参考，请以招聘单位官方发布为准。直接输出正文，不要标题和前言。";
         String user = "学生画像：" + om.writeValueAsString(profile)
                 + "\n就业意向：" + om.writeValueAsString(intent == null ? java.util.Collections.emptyMap() : intent)
                 + "\n系统推荐结果（真实岗位，按匹配分排序）：" + om.writeValueAsString(rec)
