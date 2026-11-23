@@ -203,6 +203,72 @@ public class KbController {
         return Result.success(f.getId());
     }
 
+    /** XixiBuddy 目录（服务令牌）：① 无参=全部分类库目录（含文件清单与问答数）
+     *  ② kbId+doc=指定制度的完整问答 —— XixiBuddy 作为中台上层应用统一从中台取知识 */
+    @GetMapping("/public-catalog")
+    public Result<Map<String, Object>> publicCatalog(
+            @RequestHeader(value = "X-Kb-Token", required = false) String kbToken,
+            @RequestParam(value = "kbId", required = false) Long kbId,
+            @RequestParam(value = "doc", required = false) String doc) {
+        String expected = serviceToken();
+        if (expected == null || expected.isEmpty() || !expected.equals(kbToken)) {
+            return Result.error(403, "服务令牌无效");
+        }
+        if (kbId != null && doc != null && !doc.trim().isEmpty()) {
+            // 指定制度文档的完整问答
+            String dn = doc.trim().toLowerCase();
+            KbFile target = null;
+            for (KbFile f : fileMapper.selectList(new QueryWrapper<KbFile>().eq("kb_id", kbId))) {
+                String fn = f.getName() == null ? "" : f.getName().toLowerCase();
+                if (fn.equals(dn) || fn.contains(dn) || dn.contains(stripExt(fn))) { target = f; break; }
+            }
+            if (target == null) return Result.error(404, "未找到制度文档：" + doc);
+            List<Map<String, Object>> qas = new ArrayList<Map<String, Object>>();
+            for (KbChunk c : chunkMapper.selectList(new QueryWrapper<KbChunk>()
+                    .eq("file_id", target.getId()).eq("chunk_type", "qa").orderByAsc("seq").last("LIMIT 60"))) {
+                String q = c.getQaQuestion() == null ? "" : c.getQaQuestion();
+                String content = c.getContent() == null ? "" : c.getContent();
+                String a = content.startsWith(q) && content.length() > q.length()
+                        ? content.substring(q.length()).trim() : content;
+                Map<String, Object> m = new HashMap<String, Object>();
+                m.put("q", q); m.put("a", a);
+                qas.add(m);
+            }
+            Map<String, Object> out = new HashMap<String, Object>();
+            out.put("doc", stripExt(target.getName()));
+            out.put("qaCount", qas.size());
+            out.put("qa", qas);
+            return Result.success(out);
+        }
+        // 目录：分类库 + 文件清单
+        List<Map<String, Object>> cats = new ArrayList<Map<String, Object>>();
+        for (Kb kb : kbMapper.selectList(new QueryWrapper<Kb>().eq("xixi_visible", 1).orderByAsc("id"))) {
+            List<Map<String, Object>> docs = new ArrayList<Map<String, Object>>();
+            for (KbFile f : fileMapper.selectList(new QueryWrapper<KbFile>().eq("kb_id", kb.getId()))) {
+                Map<String, Object> fm = new HashMap<String, Object>();
+                fm.put("name", stripExt(f.getName()));
+                fm.put("qaCount", f.getQaCount() == null ? 0 : f.getQaCount());
+                fm.put("status", f.getStatus());
+                docs.add(fm);
+            }
+            Map<String, Object> cm = new HashMap<String, Object>();
+            cm.put("kbId", kb.getId());
+            cm.put("name", kb.getName());
+            cm.put("docCount", docs.size());
+            cm.put("qaCount", kb.getQaCount() == null ? 0 : kb.getQaCount());
+            cm.put("docs", docs);
+            cats.add(cm);
+        }
+        Map<String, Object> out = new HashMap<String, Object>();
+        out.put("categories", cats);
+        return Result.success(out);
+    }
+
+    private static String stripExt(String name) {
+        if (name == null) return "";
+        return name.replaceAll("\\.(txt|md|docx|pdf|DOCX|PDF|TXT|MD)$", "");
+    }
+
     /** 我可见各库中处理中的文件（异步处理追踪：前端跨页面轮询 + 完成提示） */
     @GetMapping("/processing")
     public Result<List<Map<String, Object>>> processing(Authentication auth) {

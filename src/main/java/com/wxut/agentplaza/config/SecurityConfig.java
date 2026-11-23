@@ -46,6 +46,7 @@ public class SecurityConfig {
                 .antMatchers("/auth-api/**", "/api/v0/**", "/dsh/**").permitAll()
                 // 知识库跨服务检索（X-Kb-Token 由控制器校验）
                 .antMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/kb/search").permitAll()
+                .antMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/kb/public-catalog").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/agents/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/models/**").permitAll()
