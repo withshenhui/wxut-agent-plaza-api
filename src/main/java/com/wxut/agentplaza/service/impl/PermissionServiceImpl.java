@@ -38,6 +38,11 @@ public class PermissionServiceImpl implements PermissionService {
             "insight.funding", "insight.safety", "insight.academic", "insight.mental", "insight.employment", "insight.export"
     )));
 
+    /** 已知角色；未映射（含 null/空串/历史脏值）一律回退 user，保持旧 switch 的 default 语义（fail-open） */
+    private static final Set<String> KNOWN_ROLES = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+            "user", "college_admin", "leader", "admin"
+    )));
+
     @Override
     public Set<String> perms(Long userId) {
         return cache.computeIfAbsent(userId, this::compute);
@@ -46,7 +51,8 @@ public class PermissionServiceImpl implements PermissionService {
     private Set<String> compute(Long userId) {
         SysUser user = userMapper.selectById(userId);
         if (user == null) return Collections.emptySet();
-        String role = user.getRole() == null ? "user" : user.getRole();
+        String rawRole = user.getRole();
+        String role = KNOWN_ROLES.contains(rawRole) ? rawRole : "user";
         Set<String> out = new HashSet<>(featureService.defaults(role));
         // 个人覆盖：加授并集，剥夺差集
         for (SysUserPerm p : permMapper.selectList(
