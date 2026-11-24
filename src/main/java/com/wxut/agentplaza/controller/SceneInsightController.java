@@ -482,9 +482,14 @@ public class SceneInsightController {
                         " WHERE a.xgh = ? AND " + "(a.zdsdzzsj + interval '8 hour') >= ?::timestamp AND (a.zdsdzzsj + interval '8 hour') < ?::timestamp" +
                         " AND (a.zdbh BETWEEN 1000 AND 1999 OR a.zdbh BETWEEN 5000 AND 6999) AND a.zdbh NOT IN (1009,1010,1014,1015,1999)" +
                         " GROUP BY (" + "(b.zdsdzzsj + interval '8 hour'))::date) t", Integer.class, studentId, ds + " 00:00", de + " 23:59");
-                // 独餐率 = 1 - 有陪伴天数/就餐覆盖天数
+                // 独餐率 = 1 - 有陪伴天数/就餐覆盖天数（本块先于排除项核验跑，coverDays需自查）
                 int coverDaysC = 0;
-                try { coverDaysC = ((Number) r.get("coverDays")).intValue(); } catch (Exception ignore) {}
+                try {
+                    Number covN = (Number) jt.queryForObject(
+                            "SELECT COUNT(DISTINCT (" + BJ + ")::date) FROM usr_gxai.t_ykt_jkb c WHERE " + BJ_WIN + " AND " + CANTEEN +
+                            " AND c.xgh = ?", Integer.class, ds + " 00:00", de + " 23:59", studentId);
+                    if (covN != null) coverDaysC = covN.intValue();
+                } catch (Exception ignore) {}
                 Map<String, Object> comp = new HashMap<>();
                 comp.put("stable", comps.size());
                 comp.put("top", top);
