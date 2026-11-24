@@ -353,7 +353,7 @@ public class SceneInsightController {
 
         /* 学籍档案（t_bzks，字段可空率高，有值才返回） */
         List<Map<String, Object>> prof = jt.queryForList(
-                "SELECT jgdm, syszd, txdz, mzdm, zzmmdm, csrq::text FROM usr_gxai.t_bzks" +
+                "SELECT jgdm, syszd, txdz, mzdm, zzmmdm, csrq::text, xbdm FROM usr_gxai.t_bzks" +
                 " WHERE xh = ? AND dke_op_type <> 'c' AND (jgdm IS NOT NULL OR syszd IS NOT NULL OR txdz IS NOT NULL) LIMIT 1", studentId);
         if (!prof.isEmpty()) {
             Map<String, Object> p = new HashMap<>();
@@ -362,6 +362,7 @@ public class SceneInsightController {
             String sy = nz(row.get("syszd")); if (!sy.isEmpty()) p.put("sy", sy);
             String tx = nz(row.get("txdz")); if (!tx.isEmpty()) p.put("tx", tx);
             String mz = nz(row.get("mzdm")); if (!mz.isEmpty()) p.put("mz", "01".equals(mz) ? "汉族" : mz);
+            String xb = nz(row.get("xbdm")); if ("1".equals(xb)) p.put("xb", "男"); else if ("2".equals(xb)) p.put("xb", "女");
             String zz = zzmmOf(nz(row.get("zzmmdm"))); if (zz != null) p.put("zz", zz);
             String cs = nz(row.get("csrq")); if (!cs.isEmpty() && !"1900-01-01".equals(cs)) p.put("cs", cs);
             if (!p.isEmpty()) r.put("profile", p);
