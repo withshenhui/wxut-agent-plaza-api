@@ -460,10 +460,10 @@ public class SceneInsightController {
             + "2) 明确指出2-3条最值得辅导员关注的证据；3) 给出谨慎的判断方向与下一步具体建议（如谈心谈话、家庭情况核实、按资助流程处理）；"
             + "4) 220字以内；5) 只使用给定数据，不得编造或外推未提供的数据；6) 措辞温和克制，不给学生贴标签，结尾提醒结果仅供人工核实参考、勿向学生提及被系统识别。";
 
-    /** AI深度分析：服务端组装完整详情上下文 → 调当前生效大模型 */
-    @GetMapping("/detail/ai")
-    @Operation(summary = "学生详情AI深度分析（LLM）")
-    public Result<String> detailAi(Authentication auth, @RequestParam String studentId,
+    /** AI深度分析：SSE流式——服务端组装完整上下文 → 当前生效大模型边生成边推 */
+    @GetMapping(value = "/detail/ai", produces = org.springframework.http.MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "学生详情AI深度分析（LLM，SSE流式）")
+    public org.springframework.web.servlet.mvc.method.annotation.SseEmitter detailAi(Authentication auth, @RequestParam String studentId,
             @RequestParam(defaultValue = "30") int windowDays,
             @RequestParam(required = false, defaultValue = "funding") String view,
             @RequestParam(required = false) Integer pct,
@@ -484,11 +484,39 @@ public class SceneInsightController {
                 throw new com.wxut.agentplaza.exception.BusinessException(403, "该学生不在您所在学院的数据范围内");
             }
         }
-        Map<String, Object> d = buildDetail(studentId, windowDays, view);
         String safeLevel = ("hi".equals(level) || "mid".equals(level) || "watch".equals(level)) ? level : null;
         int safePct = (pct != null && pct >= 0 && pct <= 100) ? pct : -1;
+        org.springframework.web.servlet.mvc.method.annotation.SseEmitter emitter =
+                new org.springframework.web.servlet.mvc.method.annotation.SseEmitter(120000L);
+        new Thread(new Runnable() {
+            public void run() {
+                try {
+                    Map<String, Object> d = buildDetail(studentId, windowDays, view);
+                    String ctx = aiContext(d, windowDays, safePct, safeLevel);
+                    final org.springframework.web.servlet.mvc.method.annotation.SseEmitter em = emitter;
+                    llm.chatStream(AI_SYS, ctx, new java.util.function.Consumer<String>() {
+                        public void accept(String delta) {
+                            try { em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().data(delta)); }
+                            catch (Exception ignore) {}
+                        }
+                    });
+                    emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().name("done").data("[DONE]"));
+                    emitter.complete();
+                } catch (Exception e) {
+                    try {
+                        emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().name("error")
+                                .data("ai_unavailable"));
+                        emitter.complete();
+                    } catch (Exception ignore) {}
+                }
+            }
+        }, "insight-detail-ai").start();
+        return emitter;
+    }
+
+    private String aiContext(Map<String, Object> d, int win, int safePct, String safeLevel) {
         StringBuilder sb = new StringBuilder();
-        sb.append("学生近").append(windowDays).append("天数据如下（分位=同学院同年级单顿均价相对位置，数字越小越省）：\n");
+        sb.append("学生近").append(win).append("天数据如下（分位=同学院同年级单顿均价相对位置，数字越小越省）：\n");
         List<Map<String, Object>> trend = (List<Map<String, Object>>) d.get("consumption");
         int meals = 0; double spend = 0; java.util.List<String> weeks = new java.util.ArrayList<>();
         if (trend != null) {
@@ -498,7 +526,7 @@ public class SceneInsightController {
                 meals += m; spend += a; weeks.add(String.valueOf(Math.round(a)));
             }
         }
-        sb.append("食堂就餐 ").append(meals).append(" 顿，覆盖 ").append(d.get("coverDays")).append("/").append(windowDays)
+        sb.append("食堂就餐 ").append(meals).append(" 顿，覆盖 ").append(d.get("coverDays")).append("/").append(win)
           .append(" 天，总支出 ").append(String.format("%.0f", spend)).append(" 元，单顿均价 ")
           .append(meals > 0 ? String.format("%.2f", spend / meals) : "—").append(" 元");
         if (safePct >= 0) sb.append("，消费分位 P").append(safePct);
@@ -534,13 +562,7 @@ public class SceneInsightController {
         }
         if (nz(String.valueOf(d.get("dorm"))).length() > 0) sb.append("宿舍：").append(d.get("dorm")).append("。\n");
         sb.append("请生成深度分析。");
-        try {
-            String text = llm.chat(AI_SYS, sb.toString());
-            if (text == null || text.trim().isEmpty()) return Result.error(500, "AI分析返回为空");
-            return Result.success(text.trim());
-        } catch (Exception e) {
-            return Result.error(500, "AI分析暂不可用");
-        }
+        return sb.toString();
     }
 
 
