@@ -497,7 +497,7 @@ public class SceneInsightController {
         }
 
         /* funding/scene：排除项核验真实数据（请假天数 + 消费覆盖天数 + 单笔最大） */
-        if ("funding".equals(view) || "scene".equals(view)) {
+        if ("funding".equals(view) || "scene".equals(view) || "mental".equals(view)) {
             List<Map<String, Object>> leaves = jt.queryForList(
                     "SELECT kssj::date AS start_date, jssj::date AS end_date, qjlx, left(wcsy, 30) AS reason" +
                     " FROM usr_gxai.t_yzsfw_xsqjb WHERE xh = ? AND dke_op_type = 'c'" +
