@@ -440,14 +440,14 @@ public class SceneInsightController {
             r.put("consumption", trend);
         }
 
-        /* mental：共餐伙伴（孤独就餐信号，同餐厅±2分钟共现≥3天=稳定饭友） */
+        /* mental：共餐伙伴双口径（严格=同窗口机±60秒≥3天=稳定饭友[可展示]；宽=同餐厅±2分钟=陪伴判定→独餐率[线索]） */
         if ("mental".equals(view) || "scene".equals(view)) {
             try {
                 List<Map<String, Object>> comps = jt.queryForList(
                         "SELECT b.xgh, COUNT(DISTINCT (" + "(b.zdsdzzsj + interval '8 hour'))::date) AS days, COUNT(*) AS times" +
                         " FROM usr_gxai.t_ykt_jkb a JOIN usr_gxai.t_ykt_jkb b" +
                         " ON b.xgh <> a.xgh AND b.zdbh = a.zdbh" +
-                        " AND b.zdsdzzsj BETWEEN a.zdsdzzsj - interval '2 minute' AND a.zdsdzzsj + interval '2 minute'" +
+                        " AND b.zdsdzzsj BETWEEN a.zdsdzzsj - interval '60 second' AND a.zdsdzzsj + interval '60 second'" +
                         " WHERE a.xgh = ? AND " + "(a.zdsdzzsj + interval '8 hour') >= ?::timestamp AND (a.zdsdzzsj + interval '8 hour') < ?::timestamp" +
                         " AND (a.zdbh BETWEEN 1000 AND 1999 OR a.zdbh BETWEEN 5000 AND 6999) AND a.zdbh NOT IN (1009,1010,1014,1015,1999)" +
                         " GROUP BY b.xgh HAVING COUNT(DISTINCT (" + "(b.zdsdzzsj + interval '8 hour'))::date) >= 3" +
@@ -472,18 +472,24 @@ public class SceneInsightController {
                     m.put("times", ((Number) c.get("times")).intValue());
                     top.add(m);
                 }
+                // 宽口径陪伴判定（同餐厅=终端号段同食堂 ±2分钟，只算天数不产名单）
                 int companyDays = jt.queryForObject(
                         "SELECT COUNT(DISTINCT d) FROM (" +
                         " SELECT (b.zdsdzzsj + interval '8 hour')::date AS d FROM usr_gxai.t_ykt_jkb a JOIN usr_gxai.t_ykt_jkb b" +
-                        " ON b.xgh <> a.xgh AND b.zdbh = a.zdbh" +
+                        " ON b.xgh <> a.xgh" +
+                        " AND (b.zdbh / 100) = (a.zdbh / 100)" +
                         " AND b.zdsdzzsj BETWEEN a.zdsdzzsj - interval '2 minute' AND a.zdsdzzsj + interval '2 minute'" +
                         " WHERE a.xgh = ? AND " + "(a.zdsdzzsj + interval '8 hour') >= ?::timestamp AND (a.zdsdzzsj + interval '8 hour') < ?::timestamp" +
                         " AND (a.zdbh BETWEEN 1000 AND 1999 OR a.zdbh BETWEEN 5000 AND 6999) AND a.zdbh NOT IN (1009,1010,1014,1015,1999)" +
                         " GROUP BY (" + "(b.zdsdzzsj + interval '8 hour'))::date) t", Integer.class, studentId, ds + " 00:00", de + " 23:59");
+                // 独餐率 = 1 - 有陪伴天数/就餐覆盖天数
+                int coverDaysC = 0;
+                try { coverDaysC = ((Number) r.get("coverDays")).intValue(); } catch (Exception ignore) {}
                 Map<String, Object> comp = new HashMap<>();
                 comp.put("stable", comps.size());
                 comp.put("top", top);
                 comp.put("companyDays", companyDays);
+                comp.put("soloRate", coverDaysC > 0 ? Math.round((1.0 - (double) companyDays / coverDaysC) * 100) : null);
                 r.put("companions", comp);
             } catch (Exception e) {
                 // 共餐计算失败不影响详情主链路
