@@ -33,6 +33,9 @@ public class SceneInsightController {
     @org.springframework.beans.factory.annotation.Autowired
     private com.wxut.agentplaza.config.WarehouseJdbcProvider warehouseProvider;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.wxut.agentplaza.service.form.FormLlmService llm;
+
     /** 共享只读数仓池（全后端单池） */
     private JdbcTemplate jt() {
         return warehouseProvider.get();
@@ -70,13 +73,15 @@ public class SceneInsightController {
     private static final String CANTEEN =
             "(c.zdbh BETWEEN 1000 AND 1999 OR c.zdbh BETWEEN 5000 AND 6999) AND c.zdbh NOT IN (1009,1010,1014,1015,1999)";
     private static final String BJ = "(c.zdsdzzsj + interval '8 hour')";
+    /** 时间窗比较的 sargable 写法：+8 小时挪到常量侧（与 BJ 等价），使 idx(zdsdzzsj) 可用；参数顺序不变（start,end）。 */
+    private static final String BJ_WIN = "(c.zdsdzzsj >= (?::timestamp - interval '8 hour') AND c.zdsdzzsj < (?::timestamp - interval '8 hour'))";
 
     /** 消费前后半月对比 CTE（?1=前半月起 ?2=前半月止 ?3=后半月起 ?4=后半月止） */
     private static final String C12 =
             " c1 AS (SELECT xgh, SUM(xfzze)/100.0 AS s1 FROM usr_gxai.t_ykt_jkb c" +
-            "  WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN + " GROUP BY xgh)," +
+            "  WHERE " + BJ_WIN + " AND " + CANTEEN + " GROUP BY xgh)," +
             " c2 AS (SELECT xgh, SUM(xfzze)/100.0 AS s2 FROM usr_gxai.t_ykt_jkb c" +
-            "  WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN + " GROUP BY xgh),";
+            "  WHERE " + BJ_WIN + " AND " + CANTEEN + " GROUP BY xgh),";
 
     private LocalDate latestDormDate(JdbcTemplate jt) {
         String d = jt.queryForObject("SELECT max(date) FROM usr_gxai.t_zhsg_xskq", String.class);
@@ -236,7 +241,7 @@ public class SceneInsightController {
                 "  COALESCE(nr.no_return, 0) AS no_return FROM c2" +
                 "  LEFT JOIN c1 ON c1.xgh = c2.xgh LEFT JOIN nr ON nr.xgh = c2.xgh" +
                 "  WHERE (c1.s1 > 0 AND COALESCE(c2.s2,0) < c1.s1 * 0.4) OR nr.no_return >= 5)";
-        r.put("active", jt.queryForObject("SELECT COUNT(DISTINCT c.xgh) FROM usr_gxai.t_ykt_jkb c WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp", Long.class, half1s, e));
+        r.put("active", jt.queryForObject("SELECT COUNT(DISTINCT c.xgh) FROM usr_gxai.t_ykt_jkb c WHERE " + BJ_WIN, Long.class, half1s, e));
         Map<String, Object> t = jt.queryForList(sig +
                 " SELECT COUNT(*) AS n_total," +
                 " COUNT(*) FILTER (WHERE drop_pct >= 60 AND no_return >= 3) AS n_hi," +
@@ -330,6 +335,11 @@ public class SceneInsightController {
                 throw new com.wxut.agentplaza.exception.BusinessException(403, "该学生不在您所在学院的数据范围内");
             }
         }
+        return Result.success(buildDetail(studentId, windowDays, view));
+    }
+    /** 详情数据组装（detail 与 detail/ai 共用） */
+    private Map<String, Object> buildDetail(String studentId, int windowDays, String view) {
+        JdbcTemplate jt = jt();
         Map<String, Object> r = new HashMap<>();
 
         /* 学籍档案（t_bzks，字段可空率高，有值才返回） */
@@ -414,7 +424,7 @@ public class SceneInsightController {
             List<Map<String, Object>> trend = jt.queryForList(
                     "SELECT to_char(" + BJ + " - interval '3 day', 'IW') AS wk," +
                     " COUNT(*) AS meals, ROUND(SUM(xfzze)/100.0) AS amt" +
-                    " FROM usr_gxai.t_ykt_jkb c WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN +
+                    " FROM usr_gxai.t_ykt_jkb c WHERE " + BJ_WIN + " AND " + CANTEEN +
                     " AND c.xgh = ? GROUP BY 1 ORDER BY 1", cs2, ce2, studentId);
             r.put("consumption", trend);
         }
@@ -436,14 +446,103 @@ public class SceneInsightController {
             r.put("leaveDays", leaveDays.size());
             Map<String, Object> cov = jt.queryForMap(
                     "SELECT COUNT(DISTINCT (" + BJ + ")::date) AS cover, COALESCE(MAX(xfzze), 0) AS max_amt" +
-                    " FROM usr_gxai.t_ykt_jkb c WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN +
+                    " FROM usr_gxai.t_ykt_jkb c WHERE " + BJ_WIN + " AND " + CANTEEN +
                     " AND c.xgh = ?", ds, de, studentId);
             r.put("coverDays", ((Number) cov.get("cover")).intValue());
             r.put("maxAmt", ((Number) cov.get("max_amt")).doubleValue() / 100.0);
         }
-
-        return Result.success(r);
+        return r;
     }
+
+    private static final String AI_SYS =
+            "你是高校学生资助工作的数据分析助手。基于给定的学生数据写一段深度分析，供辅导员人工核实时参考。"
+            + "要求：1) 交叉综合所有维度（消费结构与同群分位对比、周消费趋势形态、请假与消费变化的关系、档案背景）；"
+            + "2) 明确指出2-3条最值得辅导员关注的证据；3) 给出谨慎的判断方向与下一步具体建议（如谈心谈话、家庭情况核实、按资助流程处理）；"
+            + "4) 220字以内；5) 只使用给定数据，不得编造或外推未提供的数据；6) 措辞温和克制，不给学生贴标签，结尾提醒结果仅供人工核实参考、勿向学生提及被系统识别。";
+
+    /** AI深度分析：服务端组装完整详情上下文 → 调当前生效大模型 */
+    @GetMapping("/detail/ai")
+    @Operation(summary = "学生详情AI深度分析（LLM）")
+    public Result<String> detailAi(Authentication auth, @RequestParam String studentId,
+            @RequestParam(defaultValue = "30") int windowDays,
+            @RequestParam(required = false, defaultValue = "funding") String view,
+            @RequestParam(required = false) Integer pct,
+            @RequestParam(required = false) String level) {
+        Long uid = (Long) auth.getPrincipal();
+        if (!permissionService.has(uid, "insight.safety") && !permissionService.has(uid, "insight.mental")
+                && !permissionService.has(uid, "insight.academic") && !permissionService.has(uid, "insight.funding")) {
+            throw new com.wxut.agentplaza.exception.BusinessException(403, "无权使用该功能，如需开通请联系管理员");
+        }
+        JdbcTemplate jt = jt();
+        String only = scoped(auth, null);
+        if (only != null) {
+            List<String> belongs = jt.queryForList(
+                    "SELECT DISTINCT yxmc FROM usr_gxai.t_zhsg_xskq WHERE xh = ? LIMIT 1", String.class, studentId);
+            String studentCollege = belongs.isEmpty() ? null : belongs.get(0);
+            String mapped = studentCollege == null ? null : (com.wxut.agentplaza.service.impl.CollegeSyncServiceImpl.collegeNameOf(studentCollege));
+            if (mapped == null || !mapped.equals(only)) {
+                throw new com.wxut.agentplaza.exception.BusinessException(403, "该学生不在您所在学院的数据范围内");
+            }
+        }
+        Map<String, Object> d = buildDetail(studentId, windowDays, view);
+        String safeLevel = ("hi".equals(level) || "mid".equals(level) || "watch".equals(level)) ? level : null;
+        int safePct = (pct != null && pct >= 0 && pct <= 100) ? pct : -1;
+        StringBuilder sb = new StringBuilder();
+        sb.append("学生近").append(windowDays).append("天数据如下（分位=同学院同年级单顿均价相对位置，数字越小越省）：\n");
+        List<Map<String, Object>> trend = (List<Map<String, Object>>) d.get("consumption");
+        int meals = 0; double spend = 0; java.util.List<String> weeks = new java.util.ArrayList<>();
+        if (trend != null) {
+            for (Map<String, Object> t : trend) {
+                int m = ((Number) t.get("meals")).intValue();
+                double a = ((Number) t.get("amt")).doubleValue();
+                meals += m; spend += a; weeks.add(String.valueOf(Math.round(a)));
+            }
+        }
+        sb.append("食堂就餐 ").append(meals).append(" 顿，覆盖 ").append(d.get("coverDays")).append("/").append(windowDays)
+          .append(" 天，总支出 ").append(String.format("%.0f", spend)).append(" 元，单顿均价 ")
+          .append(meals > 0 ? String.format("%.2f", spend / meals) : "—").append(" 元");
+        if (safePct >= 0) sb.append("，消费分位 P").append(safePct);
+        if (safeLevel != null) sb.append("，档位 ").append("hi".equals(safeLevel) ? "红(高关注)" : "mid".equals(safeLevel) ? "黄(中关注)" : "绿(观察)");
+        sb.append("。\n");
+        if (!weeks.isEmpty()) sb.append("周消费金额序列（元）：").append(String.join("、", weeks)).append("。\n");
+        if (d.get("maxAmt") != null) sb.append("单笔最大消费 ").append(String.format("%.1f", ((Number) d.get("maxAmt")).doubleValue())).append(" 元。\n");
+        if (d.get("leaveDays") != null) {
+            sb.append("请假 ").append(d.get("leaveDays")).append(" 天");
+            List<Map<String, Object>> lv = (List<Map<String, Object>>) d.get("leaves");
+            if (lv != null && !lv.isEmpty()) {
+                sb.append("：");
+                for (int i = 0; i < Math.min(lv.size(), 8); i++) {
+                    Map<String, Object> l = lv.get(i);
+                    sb.append(String.valueOf(l.get("start_date"))).append("(").append(nz(l.get("qjlx"))).append(")");
+                    if (i < Math.min(lv.size(), 8) - 1) sb.append("、");
+                }
+            }
+            sb.append("。\n");
+        }
+        Map<String, Object> prof = (Map<String, Object>) d.get("profile");
+        if (prof != null && !prof.isEmpty()) {
+            sb.append("档案：");
+            if (nz(prof.get("sy")).length() > 0) sb.append("生源地").append(nz(prof.get("sy"))).append("；");
+            if (nz(prof.get("jg")).length() > 0) sb.append("籍贯").append(nz(prof.get("jg"))).append("；");
+            if (nz(prof.get("mz")).length() > 0) sb.append("民族").append(nz(prof.get("mz"))).append("；");
+            if (nz(prof.get("zz")).length() > 0) sb.append("政治面貌").append(nz(prof.get("zz"))).append("；");
+            String cs = nz(prof.get("cs"));
+            if (cs.length() >= 4) sb.append("出生").append(cs, 0, 4).append("年；");
+            String tx = nz(prof.get("tx"));
+            if (tx.length() > 0) sb.append("家庭住址").append(tx, 0, Math.min(tx.length(), 18)).append("；");
+            sb.append("\n");
+        }
+        if (nz(String.valueOf(d.get("dorm"))).length() > 0) sb.append("宿舍：").append(d.get("dorm")).append("。\n");
+        sb.append("请生成深度分析。");
+        try {
+            String text = llm.chat(AI_SYS, sb.toString());
+            if (text == null || text.trim().isEmpty()) return Result.error(500, "AI分析返回为空");
+            return Result.success(text.trim());
+        } catch (Exception e) {
+            return Result.error(500, "AI分析暂不可用");
+        }
+    }
+
 
     /* ---------- 共用 students 实现 ---------- */
 
@@ -549,7 +648,7 @@ public class SceneInsightController {
     private static String q(String v) { return "'" + v.replace("'", "''") + "'"; }
 
     private LocalDate latestConsumptionDate(JdbcTemplate jt) {
-        String d = jt.queryForObject("SELECT MAX(zdsdzzsj + interval '8 hour')::date::text FROM usr_gxai.t_ykt_jkb", String.class);
+        String d = jt.queryForObject("SELECT (MAX(zdsdzzsj) + interval '8 hour')::date::text FROM usr_gxai.t_ykt_jkb", String.class);
         return d != null ? LocalDate.parse(d) : LocalDate.now().minusDays(1);
     }
 }
