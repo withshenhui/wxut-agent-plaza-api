@@ -467,7 +467,10 @@ public class SceneInsightController {
             @RequestParam(defaultValue = "30") int windowDays,
             @RequestParam(required = false, defaultValue = "funding") String view,
             @RequestParam(required = false) Integer pct,
-            @RequestParam(required = false) String level) {
+            @RequestParam(required = false) String level,
+            javax.servlet.http.HttpServletResponse response) {
+        // 关闭nginx对该响应的缓冲，保证SSE增量不被攒到结束一次性下发
+        response.setHeader("X-Accel-Buffering", "no");
         Long uid = (Long) auth.getPrincipal();
         if (!permissionService.has(uid, "insight.safety") && !permissionService.has(uid, "insight.mental")
                 && !permissionService.has(uid, "insight.academic") && !permissionService.has(uid, "insight.funding")) {
@@ -491,6 +494,8 @@ public class SceneInsightController {
         new Thread(new Runnable() {
             public void run() {
                 try {
+                    // 首事件立即冲刷响应链路（防代理攒流）
+                    emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().comment("ready"));
                     Map<String, Object> d = buildDetail(studentId, windowDays, view);
                     String ctx = aiContext(d, windowDays, safePct, safeLevel);
                     final org.springframework.web.servlet.mvc.method.annotation.SseEmitter em = emitter;
