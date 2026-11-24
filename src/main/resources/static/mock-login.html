@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>账号登录 · 测试</title>
+<!-- 源文件：wxut-agent-pg/public/mock-login.html（构建时复制到 dist/ → 部署到 static/v2/）；
+     api 仓同内容副本 src/main/resources/static/mock-login.html，两处保持一致 -->
+<style>
+  :root { --ink:#1E2A38; --t2:#4A5A6E; --t3:#7A8A9E; --line:#E6ECF3; --blue:#1678FF; --bg:#F4F7FB; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,PingFang SC,Microsoft YaHei,sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; display:flex; align-items:center; justify-content:center; padding:28px 16px; }
+  .wrap { width:100%; max-width:920px; display:grid; grid-template-columns:400px 1fr; gap:24px; align-items:start; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:30px 28px; box-shadow:0 2px 12px rgba(30,42,56,.05); }
+  .logo-row { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+  .logo-row img { width:44px; height:44px; object-fit:contain; }
+  .t1 { font-size:19px; font-weight:700; }
+  .t2 { font-size:12px; color:var(--t3); margin-top:2px; }
+  .sub { font-size:13px; color:var(--t3); margin:14px 0 20px; line-height:1.6; }
+  .sub b { color:var(--t2); }
+  label { display:block; font-size:12.5px; color:var(--t2); margin:14px 0 6px; }
+  input { width:100%; height:42px; border:1px solid var(--line); border-radius:10px; padding:0 14px; font-size:14px; outline:none; transition:border .15s; }
+  input:focus { border-color:var(--blue); }
+  .btn { width:100%; height:44px; margin-top:20px; background:var(--blue); color:#fff; border:none; border-radius:10px; font-size:15px; font-weight:600; cursor:pointer; }
+  .btn:active { opacity:.88; }
+  .msg { margin-top:12px; font-size:12.5px; min-height:18px; }
+  .msg.err { color:#E5484D; }
+  .msg.ok { color:#2DA44E; }
+  .accounts h3 { font-size:14px; margin-bottom:4px; }
+  .accounts .hint { font-size:11.5px; color:var(--t3); margin-bottom:12px; }
+  .tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .tbl th { text-align:left; color:var(--t3); font-weight:500; padding:7px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .tbl td { padding:7px 8px; border-bottom:1px solid #F2F6FA; }
+  .tbl tr:hover td { background:#F8FAFD; }
+  .mono { font-family:ui-monospace,Menlo,monospace; font-size:12px; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:20px; font-size:11px; }
+  .tag.fdy { background:#E8F3FF; color:#1678FF; }
+  .tag.js { background:#F0F9EB; color:#4E9F50; }
+  .tag.stu { background:#FFF4E5; color:#B45309; }
+  .use { color:var(--blue); cursor:pointer; white-space:nowrap; }
+  .foot { margin-top:14px; font-size:11.5px; color:var(--t3); line-height:1.7; }
+  @media (max-width:860px) { .wrap { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="logo-row">
+      <img src="/agent-plaza/v2/v2-logo.png" alt="无锡职业技术大学校徽" />
+      <div><div class="t1">锡职大AI中台</div><div class="t2">WXUT AI Center · 测试登录</div></div>
+    </div>
+    <p class="sub">本页为<b>账号密码登录入口</b>（不走 CAS 统一身份认证）。登录后 token 与 CAS 登录完全同源，权限强制点一致生效。</p>
+    <form id="f" onsubmit="return doLogin(event)">
+      <label>工号 / 学号</label>
+      <input id="u" placeholder="教师工号 或 学生学号" autocomplete="username" required />
+      <label>密码</label>
+      <input id="p" type="password" placeholder="请输入密码" autocomplete="current-password" required />
+      <button class="btn" type="submit">登 录</button>
+      <div class="msg" id="m"></div>
+    </form>
+  </div>
+  <div class="card accounts">
+    <h3>测试账号清单（真实数据）</h3>
+    <div class="hint">点击「填入」自动填入工号+密码 · 直接点「登录」即可</div>
+    <table class="tbl">
+      <thead><tr><th>学院</th><th>工号 / 学号</th><th>姓名</th><th>身份</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="foot">
+      学生账号用于验证「智慧就业助手」（登录后自动带出学籍画像并推荐岗位）<br />
+      验证要点：①学生 → 广场「智慧就业智能体」对话出意向卡 + 岗位卡　②本院学院锡锡可对话，他院卡片点进会被拒　③辅导员账号可见「AI 数据洞察」且数据锁定本院 🔒
+    </div>
+  </div>
+</div>
+<script>
+var API = '/agent-plaza/api/v1';
+// 登录成功后回跳前台：按当前入口推导（域名 /v2/ 或 IP 入口 /agent-plaza/v2/）
+var HOME = location.pathname.indexOf('/agent-plaza/') === 0 ? '/agent-plaza/v2/' : '/v2/';
+var ACCOUNTS = [
+  ['机械工程学院', '1112232115', '刘振煜', 'stu'],
+  ['机械工程学院', '2023091330', '袁苑', 'fdy'],
+  ['控制工程学院', '2005080575', '石磊', 'js'],
+  ['物联网工程学院', '2022091241', '谢文芮', 'fdy'],
+  ['汽车与交通工程学院', '2002010367', '宋震', 'js'],
+  ['财经学院', '2013070832', '戴璐', 'fdy'],
+  ['管理学院', '2021111089', '史先让', 'fdy'],
+  ['文旅学院', '2009070712', '朱雪', 'js'],
+  ['设计艺术学院', '2024097047', '孙嘉澍', 'fdy'],
+  ['集成电路学院', '2023051317', '万世松', 'js'],
+  ['国际教育学院', '2022111287', '宋星颖', 'fdy'],
+  ['开源创新创业学院', '2022101271', '耿灿欣', 'fdy'],
+];
+var TAG = { stu: ['stu', '学生'], fdy: ['fdy', '辅导员'], js: ['js', '任课教师'] };
+var PWD = 'Wxit@rbac2026'; // 测试账号统一密码
+var tb = document.getElementById('rows');
+ACCOUNTS.forEach(function (a) {
+  var t = TAG[a[3]] || ['js', '教师'];
+  var tr = document.createElement('tr');
+  tr.innerHTML = '<td>' + a[0] + '</td><td class="mono">' + a[1] + '</td><td>' + a[2] +
+    '</td><td><span class="tag ' + t[0] + '">' + t[1] + '</span></td>' +
+    '<td class="use" data-u="' + a[1] + '">填入</td>';
+  tb.appendChild(tr);
+});
+tb.addEventListener('click', function (e) {
+  var u = e.target.getAttribute && e.target.getAttribute('data-u');
+  if (!u) return;
+  document.getElementById('u').value = u;
+  document.getElementById('p').value = PWD;
+  document.getElementById('p').focus();
+  document.getElementById('m').className = 'msg ok';
+  document.getElementById('m').textContent = '已填入 ' + u + '，密码已自动填好，直接点登录即可';
+});
+function doLogin(ev) {
+  ev.preventDefault();
+  var m = document.getElementById('m');
+  m.className = 'msg'; m.textContent = '登录中…';
+  fetch(API + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: document.getElementById('u').value.trim(), password: document.getElementById('p').value })
+  }).then(function (r) { return r.json(); }).then(function (j) {
+    if (j.code === 200 && j.data && j.data.token) {
+      localStorage.setItem('user_token', j.data.token);
+      m.className = 'msg ok';
+      m.textContent = '登录成功，正在进入…';
+      setTimeout(function () { location.href = HOME; }, 400);
+    } else {
+      m.className = 'msg err';
+      m.textContent = '登录失败：' + (j.message || '账号或密码错误');
+    }
+  }).catch(function (e) {
+    m.className = 'msg err';
+    m.textContent = '网络异常：' + e.message;
+  });
+  return false;
+}
+</script>
+</body>
+</html>
