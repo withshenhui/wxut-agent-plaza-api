@@ -83,9 +83,18 @@ public class SceneInsightController {
             " c2 AS (SELECT xgh, SUM(xfzze)/100.0 AS s2 FROM usr_gxai.t_ykt_jkb c" +
             "  WHERE " + BJ_WIN + " AND " + CANTEEN + " GROUP BY xgh),";
 
+    private static volatile LocalDate dormDateCache;
+    private static volatile long dormDateCacheAt;
+
+    /** 数据最新日一天才变一次：10分钟静态缓存，省每次请求的全表 max(date) */
     private LocalDate latestDormDate(JdbcTemplate jt) {
+        long now = System.currentTimeMillis();
+        LocalDate c = dormDateCache;
+        if (c != null && now - dormDateCacheAt < 600000L) return c;
         String d = jt.queryForObject("SELECT max(date) FROM usr_gxai.t_zhsg_xskq", String.class);
-        return d != null ? LocalDate.parse(d) : LocalDate.now().minusDays(1);
+        LocalDate r = d != null ? LocalDate.parse(d) : LocalDate.now().minusDays(1);
+        dormDateCache = r; dormDateCacheAt = now;
+        return r;
     }
 
     /* ================= 学生安全分析 ================= */
@@ -358,8 +367,9 @@ public class SceneInsightController {
             if (!p.isEmpty()) r.put("profile", p);
         }
         /* 宿舍信息（宿管最新日） */
+        LocalDate dMax = latestDormDate(jt);
         List<Map<String, Object>> dorm = jt.queryForList(
-                "SELECT jzwmc, lcmc, fjmc FROM usr_gxai.t_zhsg_xskq WHERE xh = ? AND date = (SELECT max(date) FROM usr_gxai.t_zhsg_xskq) LIMIT 1", studentId);
+                "SELECT jzwmc, lcmc, fjmc FROM usr_gxai.t_zhsg_xskq WHERE xh = ? AND date = ? LIMIT 1", studentId, dMax.format(D));
         if (!dorm.isEmpty() && dorm.get(0).get("fjmc") != null) {
             Map<String, Object> d = dorm.get(0);
             r.put("dorm", nz(d.get("jzwmc")) + " " + nz(d.get("lcmc")) + " " + nz(d.get("fjmc")));
@@ -499,12 +509,20 @@ public class SceneInsightController {
                     Map<String, Object> d = buildDetail(studentId, windowDays, view);
                     String ctx = aiContext(d, windowDays, safePct, safeLevel);
                     final org.springframework.web.servlet.mvc.method.annotation.SseEmitter em = emitter;
-                    llm.chatStream(AI_SYS, ctx, new java.util.function.Consumer<String>() {
-                        public void accept(String delta) {
-                            try { em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().data(delta)); }
-                            catch (Exception ignore) {}
-                        }
-                    });
+                    // 推理模型：思考增量发 think 事件（前端灰字显示），正文增量发默认 data 事件
+                    llm.chatStream(AI_SYS, ctx,
+                        new java.util.function.Consumer<String>() {
+                            public void accept(String think) {
+                                try { em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().name("think").data(think)); }
+                                catch (Exception ignore) {}
+                            }
+                        },
+                        new java.util.function.Consumer<String>() {
+                            public void accept(String delta) {
+                                try { em.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().data(delta)); }
+                                catch (Exception ignore) {}
+                            }
+                        });
                     emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().name("done").data("[DONE]"));
                     emitter.complete();
                 } catch (Exception e) {

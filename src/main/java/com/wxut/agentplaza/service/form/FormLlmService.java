@@ -123,6 +123,49 @@ public class FormLlmService {
         }
     }
 
+    /** 双回调流式：onReasoning 收推理模型思考增量，onDelta 收正文增量 */
+    public String chatStream(String systemPrompt, String userPrompt,
+            java.util.function.Consumer<String> onReasoning, java.util.function.Consumer<String> onDelta) throws Exception {
+        Cfg c = cfg();
+        if (!c.ready()) throw new IllegalStateException("大模型未配置（sys_config llm.*）");
+        ObjectNode body = buildBody(c.model, true, systemPrompt, userPrompt);
+        HttpURLConnection conn = open(c, c.baseUrl + "/chat/completions", STREAM_READ_TIMEOUT_MS);
+        conn.setRequestProperty("Accept", "text/event-stream");
+        try {
+            write(conn, om.writeValueAsString(body));
+            int status = conn.getResponseCode();
+            if (status != 200) {
+                throw new IllegalStateException("LLM HTTP " + status + ": " + trunc(readAll(conn.getErrorStream())));
+            }
+            StringBuilder full = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    if (!line.startsWith("data:")) continue;
+                    String data = line.substring(5).trim();
+                    if (data.isEmpty() || "[DONE]".equals(data)) continue;
+                    try {
+                        JsonNode choice = om.readTree(data).path("choices").path(0).path("delta");
+                        String reason = choice.path("reasoning_content").asText("");
+                        if (!reason.isEmpty() && onReasoning != null) onReasoning.accept(reason);
+                        String piece = choice.path("content").asText("");
+                        if (!piece.isEmpty()) {
+                            full.append(piece);
+                            if (onDelta != null) onDelta.accept(piece);
+                        }
+                    } catch (Exception ignore) {
+                        // 单个分片解析失败不影响后续流
+                    }
+                }
+            }
+            if (full.length() == 0) throw new IllegalStateException("LLM 流式返回为空");
+            return full.toString();
+        } finally {
+            conn.disconnect();
+        }
+    }
+
     private ObjectNode buildBody(String model, boolean stream, String systemPrompt, String userPrompt) {
         ObjectNode body = om.createObjectNode();
         body.put("model", model);
