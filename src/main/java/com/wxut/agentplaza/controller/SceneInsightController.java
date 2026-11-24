@@ -440,6 +440,56 @@ public class SceneInsightController {
             r.put("consumption", trend);
         }
 
+        /* mental：共餐伙伴（孤独就餐信号，同餐厅±2分钟共现≥3天=稳定饭友） */
+        if ("mental".equals(view) || "scene".equals(view)) {
+            try {
+                List<Map<String, Object>> comps = jt.queryForList(
+                        "SELECT b.xgh, COUNT(DISTINCT (" + "(b.zdsdzzsj + interval '8 hour'))::date) AS days, COUNT(*) AS times" +
+                        " FROM usr_gxai.t_ykt_jkb a JOIN usr_gxai.t_ykt_jkb b" +
+                        " ON b.xgh <> a.xgh AND b.zdbh = a.zdbh" +
+                        " AND b.zdsdzzsj BETWEEN a.zdsdzzsj - interval '2 minute' AND a.zdsdzzsj + interval '2 minute'" +
+                        " WHERE a.xgh = ? AND " + "(a.zdsdzzsj + interval '8 hour') >= ?::timestamp AND (a.zdsdzzsj + interval '8 hour') < ?::timestamp" +
+                        " AND (a.zdbh BETWEEN 1000 AND 1999 OR a.zdbh BETWEEN 5000 AND 6999) AND a.zdbh NOT IN (1009,1010,1014,1015,1999)" +
+                        " GROUP BY b.xgh HAVING COUNT(DISTINCT (" + "(b.zdsdzzsj + interval '8 hour'))::date) >= 3" +
+                        " ORDER BY days DESC, times DESC LIMIT 8", studentId, ds + " 00:00", de + " 23:59");
+                List<String> compXghs = new java.util.ArrayList<>();
+                for (Map<String, Object> c : comps) compXghs.add(String.valueOf(c.get("xgh")));
+                java.util.Map<String, String> compNames = new java.util.HashMap<>();
+                if (!compXghs.isEmpty()) {
+                    String in = String.join(",", java.util.Collections.nCopies(compXghs.size(), "?"));
+                    Object[] args = new Object[compXghs.size() + 1];
+                    args[0] = latestDormDate(jt).format(D);
+                    for (int i = 0; i < compXghs.size(); i++) args[i + 1] = compXghs.get(i);
+                    List<Map<String, Object>> named = jt.queryForList(
+                            "SELECT DISTINCT xh, xsxm FROM usr_gxai.t_zhsg_xskq WHERE date = ? AND xh IN (" + in + ")", args);
+                    for (Map<String, Object> n : named) compNames.put(String.valueOf(n.get("xh")), nz(n.get("xsxm")));
+                }
+                List<Map<String, Object>> top = new java.util.ArrayList<>();
+                for (Map<String, Object> c : comps) {
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("name", compNames.getOrDefault(String.valueOf(c.get("xgh")), "同学" + c.get("xgh")));
+                    m.put("days", ((Number) c.get("days")).intValue());
+                    m.put("times", ((Number) c.get("times")).intValue());
+                    top.add(m);
+                }
+                int companyDays = jt.queryForObject(
+                        "SELECT COUNT(DISTINCT d) FROM (" +
+                        " SELECT (b.zdsdzzsj + interval '8 hour')::date AS d FROM usr_gxai.t_ykt_jkb a JOIN usr_gxai.t_ykt_jkb b" +
+                        " ON b.xgh <> a.xgh AND b.zdbh = a.zdbh" +
+                        " AND b.zdsdzzsj BETWEEN a.zdsdzzsj - interval '2 minute' AND a.zdsdzzsj + interval '2 minute'" +
+                        " WHERE a.xgh = ? AND " + "(a.zdsdzzsj + interval '8 hour') >= ?::timestamp AND (a.zdsdzzsj + interval '8 hour') < ?::timestamp" +
+                        " AND (a.zdbh BETWEEN 1000 AND 1999 OR a.zdbh BETWEEN 5000 AND 6999) AND a.zdbh NOT IN (1009,1010,1014,1015,1999)" +
+                        " GROUP BY (" + "(b.zdsdzzsj + interval '8 hour'))::date) t", Integer.class, studentId, ds + " 00:00", de + " 23:59");
+                Map<String, Object> comp = new HashMap<>();
+                comp.put("stable", comps.size());
+                comp.put("top", top);
+                comp.put("companyDays", companyDays);
+                r.put("companions", comp);
+            } catch (Exception e) {
+                // 共餐计算失败不影响详情主链路
+            }
+        }
+
         /* funding/scene：排除项核验真实数据（请假天数 + 消费覆盖天数 + 单笔最大） */
         if ("funding".equals(view) || "scene".equals(view)) {
             List<Map<String, Object>> leaves = jt.queryForList(
@@ -508,7 +558,7 @@ public class SceneInsightController {
                     // 首事件立即冲刷响应链路（防代理攒流）
                     emitter.send(org.springframework.web.servlet.mvc.method.annotation.SseEmitter.event().comment("ready"));
                     Map<String, Object> d = buildDetail(studentId, windowDays, view);
-                    String ctx = aiContext(d, windowDays, safePct, safeLevel);
+                    String ctx = aiContext(d, windowDays, safePct, safeLevel, view);
                     final org.springframework.web.servlet.mvc.method.annotation.SseEmitter em = emitter;
                     // 推理模型：思考增量发 think 事件（前端灰字显示），正文增量发默认 data 事件
                     llm.chatStream(AI_SYS, ctx,
@@ -538,9 +588,56 @@ public class SceneInsightController {
         return emitter;
     }
 
-    private String aiContext(Map<String, Object> d, int win, int safePct, String safeLevel) {
+    private String aiContext(Map<String, Object> d, int win, int safePct, String safeLevel, String view) {
         StringBuilder sb = new StringBuilder();
-        sb.append("学生近").append(win).append("天数据如下（分位=同学院同年级单顿均价相对位置，数字越小越省）：\n");
+        if (!"funding".equals(view)) {
+            // 安全/学业/心理视图：夜归/成绩/共餐等视图化上下文
+            List<Map<String, Object>> nights = (List<Map<String, Object>>) d.get("nights");
+            if (nights != null && !nights.isEmpty()) {
+                sb.append("观察窗内晚归/未归 ").append(nights.size()).append(" 次，其中已请假对应 ")
+                  .append(d.get("matched")).append(" 次、未请假 ").append(d.get("unmatched")).append(" 次，明细（最多8条）：");
+                for (int i = 0; i < Math.min(nights.size(), 8); i++) {
+                    Map<String, Object> n = nights.get(i);
+                    sb.append(String.valueOf(n.get("date"))).append(Boolean.TRUE.equals(n.get("onLeave")) ? "(已请假)" : "(未请假)").append("；");
+                }
+                sb.append("\n");
+            }
+            List<Map<String, Object>> scores = (List<Map<String, Object>>) d.get("scores");
+            if (scores != null && !scores.isEmpty()) {
+                int fail = 0; double sum = 0;
+                for (Map<String, Object> s : scores) {
+                    double cj = 0;
+                    try { cj = Double.parseDouble(nz(s.get("cj"))); } catch (Exception ignore) {}
+                    sum += cj; if (cj < 60) fail++;
+                }
+                sb.append(d.get("term")).append("学期成绩：").append(scores.size()).append("门，均分")
+                  .append(String.format("%.1f", sum / scores.size())).append("，不及格").append(fail).append("门，明细（最多8门）：");
+                for (int i = 0; i < Math.min(scores.size(), 8); i++) {
+                    Map<String, Object> s = scores.get(i);
+                    sb.append(nz(s.get("kcmc"))).append("=").append(nz(s.get("cj"))).append("；");
+                }
+                sb.append("\n");
+            }
+            Map<String, Object> comps = (Map<String, Object>) d.get("companions");
+            if (comps != null) {
+                sb.append("共餐伙伴（孤独就餐信号，同餐厅±2分钟共现≥3天为稳定饭友）：稳定饭友 ")
+                  .append(comps.get("stable")).append(" 人，有共餐陪伴的天数 ").append(comps.get("companyDays")).append(" 天");
+                List<Map<String, Object>> top = (List<Map<String, Object>>) comps.get("top");
+                if (top != null && !top.isEmpty()) {
+                    sb.append("，高频饭友：");
+                    for (int i = 0; i < Math.min(top.size(), 4); i++) {
+                        Map<String, Object> t = top.get(i);
+                        sb.append(nz(t.get("name"))).append("(").append(t.get("days")).append("天)；");
+                    }
+                }
+                sb.append("\n");
+            }
+            if ("funding".equals(view) == false && d.get("consumption") == null) {
+                sb.append("学生近").append(win).append("天数据如下（分位=同学院同年级单顿均价相对位置，数字越小越省）：\n");
+            }
+        } else {
+            sb.append("学生近").append(win).append("天数据如下（分位=同学院同年级单顿均价相对位置，数字越小越省）：\n");
+        }
         List<Map<String, Object>> trend = (List<Map<String, Object>>) d.get("consumption");
         int meals = 0; double spend = 0; java.util.List<String> weeks = new java.util.ArrayList<>();
         if (trend != null) {
