@@ -447,6 +447,20 @@ public class DatasetService {
         return importLsArray(datasetId, taskId, OM.readTree(json));
     }
 
+    /** 连通性自检：用当前配置访问 Label Studio /api/projects。 */
+    public Map<String, Object> lsPing() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        String base = cfg("labelstudio.base_url", ""), token = cfg("labelstudio.token", "");
+        if (base.isEmpty() || token.isEmpty()) { out.put("ok", false); out.put("error", "未配置 labelstudio.base_url / token"); return out; }
+        try {
+            String json = http(base, "/api/projects", "GET", token, null);
+            JsonNode j = OM.readTree(json);
+            out.put("ok", true);
+            out.put("projects", j.has("count") ? j.get("count").asInt() : j.path("results").size());
+        } catch (Exception e) { out.put("ok", false); out.put("error", e.getMessage()); }
+        return out;
+    }
+
     /** 调用 Label Studio 接口（Java 8 HttpURLConnection）。 */
     private static String http(String base, String path, String method, String token, String body) throws Exception {
         java.net.HttpURLConnection con = (java.net.HttpURLConnection) new java.net.URL(base + path).openConnection();
