@@ -170,4 +170,11 @@ public class DatasetController {
         if (!gate(auth, false)) return deny();
         return Result.success(service.lsPing());
     }
+
+    @GetMapping("/{id}/annot-tasks/{tid}/quality")
+    @Operation(summary = "标注质量指标（覆盖率/条数）")
+    public Result<Map<String, Object>> quality(@PathVariable long id, @PathVariable long tid, Authentication auth) throws Exception {
+        if (!gate(auth, false)) return deny();
+        return Result.success(service.quality(id, tid));
+    }
 }

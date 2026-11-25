@@ -444,7 +444,28 @@ public class DatasetService {
         }
         if (pid == null || pid.isEmpty()) throw new IllegalStateException("该任务尚未推送到 Label Studio");
         String json = http(base, "/api/projects/" + pid + "/export?exportType=JSON", "GET", token, null);
-        return importLsArray(datasetId, taskId, OM.readTree(json));
+        Map<String, Object> r = importLsArray(datasetId, taskId, OM.readTree(json));
+        r.putAll(quality(datasetId, taskId));
+        return r;
+    }
+
+    /** 标注质量指标：覆盖率（已标注条目 / 总条目）+ 结果条数（多人一致性/审核为后续）。 */
+    public Map<String, Object> quality(long datasetId, long taskId) throws Exception {
+        Map<String, Object> out = new LinkedHashMap<>();
+        int total = 0, annotated = 0, results = 0;
+        try (Connection c = dataSource.getConnection()) {
+            try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM ds_item WHERE dataset_id=? AND clean_status<>'dropped'")) {
+                ps.setLong(1, datasetId); try (ResultSet rs = ps.executeQuery()) { if (rs.next()) total = rs.getInt(1); }
+            }
+            try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(DISTINCT item_id), COUNT(*) FROM ds_annot_result WHERE task_id=?")) {
+                ps.setLong(1, taskId); try (ResultSet rs = ps.executeQuery()) { if (rs.next()) { annotated = rs.getInt(1); results = rs.getInt(2); } }
+            }
+        }
+        out.put("total", total);
+        out.put("annotated", annotated);
+        out.put("results", results);
+        out.put("coverage", total > 0 ? Math.round(annotated * 100f / total) : 0);
+        return out;
     }
 
     /** 连通性自检：用当前配置访问 Label Studio /api/projects。 */
