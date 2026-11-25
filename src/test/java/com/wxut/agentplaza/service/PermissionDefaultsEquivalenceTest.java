@@ -131,4 +131,40 @@ class PermissionDefaultsEquivalenceTest {
     void compute_unknown_role_falls_back_to_user() {
         assertEquals(userDefault(), svcWithRole("typo_role").perms(UID));
     }
+
+    // ==== (4) 待分配（pending=1）：仅 plaza.view，不叠加角色默认/个人授予 ====
+
+    private PermissionServiceImpl svcWithPending(Integer pending, String role) {
+        SysUser u = new SysUser();
+        u.setId(UID);
+        u.setRole(role);
+        u.setPending(pending);
+        when(userMapper.selectById(any())).thenReturn(u);
+        return new PermissionServiceImpl(userMapper, permMapper, collegeMapper, new FeatureServiceImpl(null));
+    }
+
+    @Test
+    void compute_pending_user_returns_only_plaza_view() {
+        assertEquals(new HashSet<>(Collections.singletonList("plaza.view")),
+                svcWithPending(1, "user").perms(UID));
+    }
+
+    @Test
+    void compute_pending_admin_also_restricted_to_plaza_view() {
+        assertEquals(new HashSet<>(Collections.singletonList("plaza.view")),
+                svcWithPending(1, "admin").perms(UID));
+    }
+
+    @Test
+    void isPending_only_true_for_flag_one() {
+        assertTrue(svcWithPending(1, "user").isPending(UID));
+        assertFalse(svcWithPending(0, "user").isPending(UID));
+        assertFalse(svcWithPending(null, "user").isPending(UID));
+    }
+
+    @Test
+    void compute_pending_zero_keeps_full_role_defaults() {
+        when(permMapper.selectList(any())).thenReturn(Collections.<SysUserPerm>emptyList());
+        assertEquals(userDefault(), svcWithPending(0, "user").perms(UID));
+    }
 }

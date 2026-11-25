@@ -10,6 +10,8 @@ public interface SysUserService {
     void updateUser(Long id, UserDTO dto);
     void updateStatus(Long id, Integer status);
     void resetPassword(Long id, String newPassword);
+    /** 设置「待分配」状态（1=待分配，0=正常） */
+    void setPending(Long id, Integer pending);
     void updateProfile(Long userId, UserDTO dto);
     void changePassword(Long userId, String oldPassword, String newPassword);
 }

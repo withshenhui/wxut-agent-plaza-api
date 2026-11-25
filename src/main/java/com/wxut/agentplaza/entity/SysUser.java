@@ -38,6 +38,9 @@ public class SysUser {
 
     private LocalDateTime collegeSyncedAt;
 
+    /** 待分配标记：1=新用户尚未分配权限/学院（仅「制度建设」可见），0=正常 */
+    private Integer pending;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

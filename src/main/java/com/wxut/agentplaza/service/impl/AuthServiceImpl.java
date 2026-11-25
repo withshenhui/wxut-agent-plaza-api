@@ -134,7 +134,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public LoginVO loginByWecom(String wecomUserId) {
-        String username = WecomUserResolver.resolveUsername(
+        String resolved = WecomUserResolver.resolveUsername(
                 wecomUserId,
                 (k) -> {
                     SysUser u = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, k));
@@ -144,13 +144,25 @@ public class AuthServiceImpl implements AuthService {
                     WecomUserMap m = wecomUserMapMapper.selectById(k);
                     return m == null ? null : m.getUsername();
                 });
-        if (username == null) {
-            throw new BusinessException("wecom_unmapped");
-        }
+        // 未命中映射不降游客：企微 userid 即工号，直接作为 username 自动建号
+        String username = (resolved != null && !resolved.isEmpty()) ? resolved : wecomUserId;
+        if (username == null || username.isEmpty()) throw new BusinessException("wecom_unmapped");
         SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
-        if (user == null) throw new BusinessException("wecom_unmapped");
-        if (user.getStatus() == 0) throw new BusinessException("账号已被禁用");
-        collegeSyncService.syncIfNeeded(user, false);
+        if (user != null) {
+            if (user.getStatus() == 0) throw new BusinessException("账号已被禁用");
+            user = collegeSyncService.syncIfNeeded(user, false);
+        } else {
+            // 首次登录的新用户自动建号：置「待分配」——分配权限/学院前仅「制度建设」可见
+            user = new SysUser();
+            user.setUsername(username);
+            user.setNickname(username);
+            user.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+            user.setRole("user");
+            user.setStatus(1);
+            user.setPending(1);
+            userMapper.insert(user);
+            user = collegeSyncService.syncIfNeeded(user, false);
+        }
         boolean chatAll = "all".equals(permissionService.scope(user.getId()).get("scope"));
         String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole(),
                 user.getCollegeId(), chatAll);

@@ -12,6 +12,9 @@ public interface PermissionService {
     /** 用户全部权限键（含角色默认） */
     Set<String> perms(Long userId);
 
+    /** 是否「待分配」（pending=1）：分配权限/学院前仅「制度建设」可见 */
+    boolean isPending(Long userId);
+
     boolean has(Long userId, String permKey);
 
     /** 无权限抛 BusinessException(403) */

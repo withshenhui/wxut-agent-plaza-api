@@ -53,6 +53,10 @@ public class SysUserServiceImpl implements SysUserService {
         if (dto.getStatus() != null) user.setStatus(dto.getStatus());
         if (dto.getAvatar() != null) user.setAvatar(dto.getAvatar());
         if (dto.getCollegeId() != null) user.setCollegeId(dto.getCollegeId());
+        // 管理员分配学院或权限（全量 perms 覆盖）后自动解除「待分配」
+        if (dto.getCollegeId() != null || dto.getPerms() != null) {
+            user.setPending(0);
+        }
         userMapper.updateById(user);
         // 个人权限覆盖：全量重写（仅显式传入 perms 时）
         if (dto.getPerms() != null) {
@@ -88,6 +92,16 @@ public class SysUserServiceImpl implements SysUserService {
         if (user == null) throw new BusinessException("用户不存在");
         user.setPassword(passwordEncoder.encode(newPassword));
         userMapper.updateById(user);
+    }
+
+    @Override
+    public void setPending(Long id, Integer pending) {
+        SysUser user = userMapper.selectById(id);
+        if (user == null) throw new BusinessException("用户不存在");
+        user.setPending(pending);
+        userMapper.updateById(user);
+        // pending 变化影响 perms 计算，清缓存
+        permissionService.evict(id);
     }
 
     @Override

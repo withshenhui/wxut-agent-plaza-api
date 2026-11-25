@@ -51,6 +51,10 @@ public class PermissionServiceImpl implements PermissionService {
     private Set<String> compute(Long userId) {
         SysUser user = userMapper.selectById(userId);
         if (user == null) return Collections.emptySet();
+        // 待分配：仅广场可见——不叠加角色默认，也不叠加个人显式授予
+        if (user.getPending() != null && user.getPending() == 1) {
+            return Collections.singleton("plaza.view");
+        }
         String rawRole = user.getRole();
         String role = KNOWN_ROLES.contains(rawRole) ? rawRole : "user";
         Set<String> out = new HashSet<>(featureService.defaults(role));
@@ -61,6 +65,13 @@ public class PermissionServiceImpl implements PermissionService {
             else out.remove(p.getPermKey());
         }
         return out;
+    }
+
+    @Override
+    public boolean isPending(Long userId) {
+        if (userId == null) return false;
+        SysUser user = userMapper.selectById(userId);
+        return user != null && user.getPending() != null && user.getPending() == 1;
     }
 
     @Override

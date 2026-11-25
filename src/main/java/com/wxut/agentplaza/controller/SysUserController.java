@@ -18,6 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Set;
 
 @Tag(name = "用户管理")
@@ -110,6 +111,23 @@ public class SysUserController {
             permMapper.updateById(existing);
         }
         permissionService.evict(id);
+        // 管理员授予权限后自动解除「待分配」
+        if (granted) {
+            userService.setPending(id, 0);
+        }
+        return Result.success();
+    }
+
+    /** 手动开关「待分配」：1=待分配（仅制度建设可见），0=正常。仅管理员（/api/v1/users/** 已限 ADMIN）。 */
+    @PatchMapping("/{id}/pending")
+    @Operation(summary = "设置用户「待分配」状态")
+    @OperationLog("设置用户待分配状态")
+    public Result<Void> setPending(@PathVariable Long id, @RequestBody Map<String, Integer> body) {
+        Integer pending = body == null ? null : body.get("pending");
+        if (pending == null || (pending != 0 && pending != 1)) {
+            return Result.error(400, "pending 只能为 0 或 1");
+        }
+        userService.setPending(id, pending);
         return Result.success();
     }
 
