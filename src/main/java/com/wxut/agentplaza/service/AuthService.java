@@ -11,4 +11,5 @@ public interface AuthService {
     LoginVO register(RegisterDTO dto);
     UserInfoVO getCurrentUser(Long userId);
     SysUser findOrCreateCasUser(String uid, String cn);
+    LoginVO loginByWecom(String wecomUserId);
 }

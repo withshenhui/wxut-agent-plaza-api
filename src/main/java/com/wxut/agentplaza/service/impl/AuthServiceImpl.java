@@ -4,12 +4,15 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.wxut.agentplaza.dto.LoginDTO;
 import com.wxut.agentplaza.dto.RegisterDTO;
 import com.wxut.agentplaza.entity.SysUser;
+import com.wxut.agentplaza.entity.WecomUserMap;
 import com.wxut.agentplaza.exception.BusinessException;
 import com.wxut.agentplaza.mapper.SysUserMapper;
+import com.wxut.agentplaza.mapper.WecomUserMapMapper;
 import com.wxut.agentplaza.security.JwtTokenProvider;
 import com.wxut.agentplaza.service.AuthService;
 import com.wxut.agentplaza.service.CollegeSyncService;
 import com.wxut.agentplaza.service.PermissionService;
+import com.wxut.agentplaza.service.wecom.WecomUserResolver;
 import com.wxut.agentplaza.vo.LoginVO;
 import com.wxut.agentplaza.vo.UserInfoVO;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +30,7 @@ public class AuthServiceImpl implements AuthService {
     private final CollegeSyncService collegeSyncService;
     private final PermissionService permissionService;
     private final com.wxut.agentplaza.mapper.SysCollegeMapper collegeMapper;
+    private final WecomUserMapMapper wecomUserMapMapper;
 
     @Value("${jwt.expiration}")
     private long expiration;
@@ -126,5 +130,36 @@ public class AuthServiceImpl implements AuthService {
         userMapper.insert(user);
         user = collegeSyncService.syncIfNeeded(user, false);
         return user;
+    }
+
+    @Override
+    public LoginVO loginByWecom(String wecomUserId) {
+        String username = WecomUserResolver.resolveUsername(
+                wecomUserId,
+                (k) -> {
+                    SysUser u = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, k));
+                    return u == null ? null : u.getUsername();
+                },
+                (k) -> {
+                    WecomUserMap m = wecomUserMapMapper.selectById(k);
+                    return m == null ? null : m.getUsername();
+                });
+        if (username == null) {
+            throw new BusinessException("wecom_unmapped");
+        }
+        SysUser user = userMapper.selectOne(new LambdaQueryWrapper<SysUser>().eq(SysUser::getUsername, username));
+        if (user == null) throw new BusinessException("wecom_unmapped");
+        if (user.getStatus() == 0) throw new BusinessException("账号已被禁用");
+        collegeSyncService.syncIfNeeded(user, false);
+        boolean chatAll = "all".equals(permissionService.scope(user.getId()).get("scope"));
+        String token = jwtTokenProvider.generateToken(user.getId(), user.getUsername(), user.getRole(),
+                user.getCollegeId(), chatAll);
+        LoginVO vo = new LoginVO();
+        vo.setToken(token);
+        vo.setExpiresIn(expiration / 1000);
+        UserInfoVO info = new UserInfoVO();
+        fillInfo(info, user);
+        vo.setUserInfo(info);
+        return vo;
     }
 }
