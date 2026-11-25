@@ -496,6 +496,57 @@ public class DatasetService {
         }
     }
 
+    /** 把 LS 标注结果转成训练可用的 output：
+     *  实体(labels) → {"entities":[{start,end,text,label}], "bio":"字\t标签…"}（字符级 BIO，适合中文）；
+     *  分类(choices) → {"labels":[...]}；无法识别则原样返回。 */
+    private static String annToTrain(String text, String annJson) {
+        if (annJson == null || annJson.trim().isEmpty()) return "";
+        try {
+            JsonNode root = OM.readTree(annJson);
+            JsonNode results = null;
+            if (root.isArray() && root.size() > 0 && root.get(0).has("result")) results = root.get(0).get("result");
+            else if (root.isObject() && root.has("result")) results = root.get("result");
+            if (results == null || !results.isArray()) return annJson;
+            ArrayNode ents = OM.createArrayNode();
+            ArrayNode choices = OM.createArrayNode();
+            for (JsonNode it : results) {
+                String type = it.path("type").asText("");
+                JsonNode v = it.path("value");
+                if ("labels".equals(type)) {
+                    ObjectNode e = OM.createObjectNode();
+                    e.put("start", v.path("start").asInt());
+                    e.put("end", v.path("end").asInt());
+                    e.put("text", v.path("text").asText(""));
+                    e.put("label", v.path("labels").isArray() && v.get("labels").size() > 0 ? v.get("labels").get(0).asText() : "");
+                    ents.add(e);
+                } else if ("choices".equals(type) && v.path("choices").isArray()) {
+                    for (JsonNode cn : v.get("choices")) choices.add(cn.asText());
+                }
+            }
+            ObjectNode out = OM.createObjectNode();
+            if (ents.size() > 0) {
+                out.set("entities", ents);
+                StringBuilder bio = new StringBuilder();
+                String s = text == null ? "" : text;
+                for (int i = 0; i < s.length(); i++) {
+                    String tag = "O";
+                    for (JsonNode e : ents) {
+                        int st = e.get("start").asInt(), en = e.get("end").asInt();
+                        if (i >= st && i < en) { tag = (i == st ? "B-" : "I-") + e.get("label").asText(); break; }
+                    }
+                    if (i > 0) bio.append('\n');
+                    bio.append(s.charAt(i)).append('\t').append(tag);
+                }
+                out.put("bio", bio.toString());
+            } else if (choices.size() > 0) {
+                out.set("labels", choices);
+            } else {
+                return annJson;
+            }
+            return OM.writeValueAsString(out);
+        } catch (Exception e) { return annJson; }
+    }
+
     /** 导出：alpaca / sharegpt / jsonl。条目原文若为 JSON 且含 instruction/output 则直接取字段。 */
     public String exportVersion(long datasetId, String format) throws Exception {
         StringBuilder sb = new StringBuilder();
@@ -526,9 +577,9 @@ public class DatasetService {
                             if (!input.isEmpty()) ins = ins + "\n" + input;
                         }
                     } catch (Exception ignore) { }
-                    // 若该条已有标注 → 以标注结果作为 output（覆盖原文里的 output 字段）
+                    // 若该条已有标注 → 转成训练格式作为 output（实体→entities/BIO，分类→labels）
                     String annOut = ann.get(itemId);
-                    if (annOut != null && !annOut.isEmpty()) out = annOut;
+                    if (annOut != null && !annOut.isEmpty()) out = annToTrain(t, annOut);
                     if (sharegpt) {
                         ObjectNode o = OM.createObjectNode();
                         ArrayNode conv = OM.createArrayNode();
