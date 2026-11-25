@@ -452,7 +452,7 @@ public class DatasetService {
     /** 标注质量指标：覆盖率（已标注条目 / 总条目）+ 结果条数（多人一致性/审核为后续）。 */
     public Map<String, Object> quality(long datasetId, long taskId) throws Exception {
         Map<String, Object> out = new LinkedHashMap<>();
-        int total = 0, annotated = 0, results = 0;
+        int total = 0, annotated = 0, results = 0; String tstatus = null;
         try (Connection c = dataSource.getConnection()) {
             try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(*) FROM ds_item WHERE dataset_id=? AND clean_status<>'dropped'")) {
                 ps.setLong(1, datasetId); try (ResultSet rs = ps.executeQuery()) { if (rs.next()) total = rs.getInt(1); }
@@ -460,12 +460,28 @@ public class DatasetService {
             try (PreparedStatement ps = c.prepareStatement("SELECT COUNT(DISTINCT item_id), COUNT(*) FROM ds_annot_result WHERE task_id=?")) {
                 ps.setLong(1, taskId); try (ResultSet rs = ps.executeQuery()) { if (rs.next()) { annotated = rs.getInt(1); results = rs.getInt(2); } }
             }
+            try (PreparedStatement ps = c.prepareStatement("SELECT status FROM ds_annot_task WHERE id=?")) {
+                ps.setLong(1, taskId); try (ResultSet rs = ps.executeQuery()) { if (rs.next()) tstatus = rs.getString(1); }
+            }
         }
         out.put("total", total);
         out.put("annotated", annotated);
         out.put("results", results);
         out.put("coverage", total > 0 ? Math.round(annotated * 100f / total) : 0);
+        out.put("taskStatus", tstatus);
         return out;
+    }
+
+    /** 审核：通过 / 驳回该任务的标注结果（任务级；驳回即回流重标）。复用 ds_annot_task.status。 */
+    public Map<String, Object> reviewTask(long datasetId, long taskId, String status) throws Exception {
+        if (!"approved".equals(status) && !"rejected".equals(status)) throw new IllegalArgumentException("status 仅支持 approved / rejected");
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement("UPDATE ds_annot_task SET status=? WHERE id=? AND dataset_id=?")) {
+            ps.setString(1, status); ps.setLong(2, taskId); ps.setLong(3, datasetId);
+            int n = ps.executeUpdate();
+            Map<String, Object> out = new LinkedHashMap<>(); out.put("ok", n > 0); out.put("status", status);
+            return out;
+        }
     }
 
     /** 连通性自检：用当前配置访问 Label Studio /api/projects。 */

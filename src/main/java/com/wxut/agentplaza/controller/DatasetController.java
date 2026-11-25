@@ -177,4 +177,11 @@ public class DatasetController {
         if (!gate(auth, false)) return deny();
         return Result.success(service.quality(id, tid));
     }
+
+    @PostMapping("/{id}/annot-tasks/{tid}/review")
+    @Operation(summary = "审核标注任务（通过/驳回）")
+    public Result<Map<String, Object>> review(@PathVariable long id, @PathVariable long tid, @RequestBody Map<String, String> body, Authentication auth) throws Exception {
+        if (!gate(auth, true)) return deny();
+        return Result.success(service.reviewTask(id, tid, body == null ? null : body.get("status")));
+    }
 }
