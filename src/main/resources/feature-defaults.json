@@ -19,11 +19,11 @@
     {"key":"insight","label":"AI 数据洞察","group":"数据洞察","kind":"channel","route":"/insight","api":"/api/v1/insight",
      "enabled":true,"gate":"perm","permKey":null,
      "children":[
-       {"key":"funding","label":"精准资助分析","enabled":true,"gate":"perm","permKey":"insight.funding","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
-       {"key":"safety","label":"学生安全分析","enabled":true,"gate":"perm","permKey":"insight.safety","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
-       {"key":"academic","label":"学业预警分析","enabled":true,"gate":"perm","permKey":"insight.academic","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
-       {"key":"mental","label":"心理关怀分析","enabled":true,"gate":"perm","permKey":"insight.mental","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
-       {"key":"employment","label":"就业分析","enabled":true,"gate":"perm","permKey":"insight.employment","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
+       {"key":"funding","label":"精准资助分析","enabled":true,"gate":"perm","status":"ready","permKey":"insight.funding","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
+       {"key":"safety","label":"学生安全分析","enabled":true,"gate":"perm","status":"ready","permKey":"insight.safety","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
+       {"key":"academic","label":"学业预警分析","enabled":true,"gate":"perm","status":"ready","permKey":"insight.academic","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
+       {"key":"mental","label":"心理关怀分析","enabled":true,"gate":"perm","status":"ready","permKey":"insight.mental","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
+       {"key":"employment","label":"就业分析","enabled":false,"gate":"perm","status":"ready","permKey":"insight.employment","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}},
        {"key":"export","label":"名单导出","enabled":true,"gate":"perm","permKey":"insight.export","defaults":{"user":true,"college_admin":true,"leader":true,"admin":true}}
      ]},
     {"key":"teacher","label":"AI教师工作台","group":"教师","kind":"channel","route":"/teacher","api":"/api/v1/form",
