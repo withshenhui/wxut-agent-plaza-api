@@ -169,7 +169,19 @@ public class EmploymentService {
             }
             sql.append(" OR city LIKE '%江苏省%')"); // 省级兜底
         }
-        // 排序：意向城市命中 → 专业关键词命中 → 招聘人数/新鲜度（专业不做硬过滤，交 LLM 精排判断匹配度）
+        // 专业相关性硬过滤：至少命中一个专业关键词（major_hint / title / skills）——去掉 LLM 精排后，由规则保证"推荐必与专业相关"
+        if (!kw.isEmpty()) {
+            sql.append(" AND (");
+            for (int i = 0; i < kw.size(); i++) {
+                if (i > 0) sql.append(" OR ");
+                sql.append("major_hint LIKE ? OR title LIKE ? OR skills LIKE ?");
+                args.add("%" + kw.get(i) + "%");
+                args.add("%" + kw.get(i) + "%");
+                args.add("%" + kw.get(i) + "%");
+            }
+            sql.append(")");
+        }
+        // 排序：意向城市命中 → 专业关键词命中 → 招聘人数/新鲜度
         StringBuilder order = new StringBuilder();
         if (!cityList.isEmpty()) {
             order.append("(CASE WHEN ");
@@ -209,6 +221,17 @@ public class EmploymentService {
         return out;
     }
 
+    /** 快速推荐：仅规则过滤+规则分（不调大模型）——对话首屏先出卡，随后再用 LLM 精排替换 */
+    public List<Map<String, Object>> quickRank(String studentNo) {
+        Map<String, Object> profile = profile(studentNo);
+        Map<String, Object> intent = getIntent(studentNo);
+        String major = str(profile.get("major"));
+        List<Map<String, Object>> cand = filter(major, intent);
+        if (cand.isEmpty()) return cand;
+        List<Map<String, Object>> top = cand.size() > 12 ? new ArrayList<>(cand.subList(0, 12)) : cand;
+        return ruleRank(top, profile, intent);
+    }
+
     /** 完整推荐：过滤 → LLM 精排（失败降级规则分） */
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> recommend(String studentNo) {
@@ -217,7 +240,7 @@ public class EmploymentService {
         String major = str(profile.get("major"));
         List<Map<String, Object>> cand = filter(major, intent);
         if (cand.isEmpty()) return cand;
-        List<Map<String, Object>> top = cand.size() > 20 ? new ArrayList<>(cand.subList(0, 20)) : cand;
+        List<Map<String, Object>> top = cand.size() > 12 ? new ArrayList<>(cand.subList(0, 12)) : cand;
         try {
             String ranked = llmRank(profile, intent, top);
             if (ranked != null && !ranked.isEmpty()) {
@@ -243,11 +266,11 @@ public class EmploymentService {
         } catch (Exception e) {
             log.warn("就业：LLM 精排失败，降级规则分：{}", e.getMessage());
         }
-        return ruleRank(top, major, intent);
+        return ruleRank(top, profile, intent);
     }
 
     private String llmRank(Map<String, Object> profile, Map<String, Object> intent, List<Map<String, Object>> cand) throws Exception {
-        String sys = "你是校园就业匹配助手。依据学生画像与就业意向，对候选岗位逐一给出匹配分(0-100)、推荐理由(1-2句，须引用学生本人的专业/年级/成绩等事实)、短板提示(具体可补的能力)。"
+        String sys = "你是校园就业匹配助手。依据学生画像与就业意向，对候选岗位逐一给出匹配分(0-100)、推荐理由(不超过25字，须引用学生本人的专业/年级/成绩等事实)、短板提示(不超过20字，具体可补的能力)。不要展开分析过程。"
                 + "硬性要求：岗位学历要求明显高于学生层次时给低分；理由不得编造学生数据中不存在的信息。只输出 JSON 数组，形如 [{\"jobId\":1,\"score\":88,\"reason\":\"...\",\"gaps\":\"...\"}]，不要任何其他文字。";
         String user = "学生画像：" + OM.writeValueAsString(profile)
                 + "\n就业意向：" + OM.writeValueAsString(intent == null ? Collections.emptyMap() : intent)
@@ -271,20 +294,49 @@ public class EmploymentService {
     }
 
     /** 规则降级：专业命中 + 城市命中 + 招聘人数 */
-    private List<Map<String, Object>> ruleRank(List<Map<String, Object>> cand, String major, Map<String, Object> intent) {
+    private List<Map<String, Object>> ruleRank(List<Map<String, Object>> cand, Map<String, Object> profile, Map<String, Object> intent) {
+        String major = str(profile == null ? null : profile.get("major"));
+        String grade = str(profile == null ? null : profile.get("grade"));
         List<String> kw = majorKeywords(major);
         List<String> cityList = splitList(str(intent == null ? null : intent.get("city")));
         for (Map<String, Object> j : cand) {
             int score = 60;
             String mh = str(j.get("major_hint")) + str(j.get("title"));
-            for (String k : kw) if (mh.contains(k)) { score += 12; break; }
+            String hitKw = null;
+            for (String k : kw) if (mh.contains(k)) { score += 12; hitKw = k; break; }
             String city = str(j.get("city"));
-            for (String ct : cityList) if (city.contains(ct)) { score += 15; break; }
+            String hitCity = null;
+            for (String ct : cityList) if (city.contains(ct)) { score += 15; hitCity = ct; break; }
             Object hc = j.get("hire_count");
             if (hc != null) { try { score += Math.min(8, Integer.parseInt(String.valueOf(hc))); } catch (Exception ignore) {} }
-            j.put("score", Math.min(95, score));
-            j.put("reason", "按专业方向与意向城市规则匹配（大模型精排暂不可用，结果仅供参考）");
-            j.put("gaps", "");
+            // 事实型推荐理由：只用库里/画像里真实存在的字段拼，不编造
+            StringBuilder r = new StringBuilder();
+            if (hitKw != null && !major.isEmpty()) {
+                r.append("你的专业「").append(major).append("」");
+                if (!grade.isEmpty()) r.append("（").append(grade).append("级）");
+                r.append("与该岗位方向（").append(hitKw).append("）一致；");
+            }
+            if (hitCity != null) r.append("工作地「").append(hitCity).append("」在你的意向城市内；");
+            String edu = str(j.get("edu_req"));
+            if (!edu.isEmpty()) {
+                if (edu.contains("硕士") || edu.contains("研究生") || edu.contains("博士")) {
+                    // 学历门槛高于高职专科层次：压分并如实提示（此前 LLM 精排承担的"学历过高压分"改由规则承担）
+                    score = Math.min(score - 25, 52);
+                    r.append("学历要求「").append(edu).append("」，门槛高于高职专科层次，建议优先看专科/本科岗位（本条可作冲刺）");
+                } else if (edu.contains("专科") || edu.contains("大专") || edu.contains("不限") || edu.contains("无")) {
+                    r.append("学历要求「").append(edu).append("」，与你的层次相符");
+                } else {
+                    r.append("学历要求「").append(edu).append("」");
+                }
+            }
+            if (r.length() == 0) r.append("岗位方向与你的专业或求职意向有一定关联；");
+            r.setLength(r.length() - 1);
+            j.put("score", Math.max(20, Math.min(95, score)));
+            j.put("reason", r.toString());
+            // 短板：直接引用岗位自身的任职要求（学生可提前准备），不编造
+            String skills = str(j.get("skills")).replaceAll("\\s+", " ").trim();
+            if (skills.length() > 90) skills = skills.substring(0, 90) + "…";
+            j.put("gaps", skills.isEmpty() ? "" : "岗位要求（可提前准备）：" + skills);
         }
         cand.sort((a, b) -> ((Integer) b.get("score")) - ((Integer) a.get("score")));
         return cand.size() > 10 ? new ArrayList<>(cand.subList(0, 10)) : cand;

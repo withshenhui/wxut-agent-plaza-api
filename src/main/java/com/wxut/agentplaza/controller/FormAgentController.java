@@ -72,10 +72,11 @@ public class FormAgentController {
     // ================= 模板 =================
 
     @GetMapping("/templates")
-    @Operation(summary = "模板列表（管理员含停用）")
+    @Operation(summary = "模板列表（管理员含停用；普通用户含本人的自定义模板）")
     public Result<List<Map<String, Object>>> listTemplates(Authentication auth,
                                                             @RequestParam(defaultValue = "false") boolean all) {
-        return Result.success(agentService.listTemplates(all && isAdmin(auth)));
+        boolean admin = isAdmin(auth);
+        return Result.success(agentService.listTemplates(all && admin, usernameOf(auth), admin));
     }
 
     @GetMapping("/templates/{id}")
@@ -87,8 +88,7 @@ public class FormAgentController {
     }
 
     @PostMapping("/templates/upload")
-    @Operation(summary = "上传自定义模板（docx/xlsx/pdf）")
-    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "上传自定义模板（docx/xlsx/pdf）——任意登录用户可上传自己的格式")
     public Result<Map<String, Object>> uploadTemplate(@RequestParam("file") MultipartFile file,
                                                       @RequestParam(required = false) String name,
                                                       Authentication auth) {

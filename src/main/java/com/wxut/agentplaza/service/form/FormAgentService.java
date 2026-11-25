@@ -111,11 +111,15 @@ public class FormAgentService {
         }
     }
 
-    public List<Map<String, Object>> listTemplates(boolean all) {
+    public List<Map<String, Object>> listTemplates(boolean all, String username, boolean admin) {
         LambdaQueryWrapper<FormTemplate> q = new LambdaQueryWrapper<FormTemplate>()
                 .eq(!all, FormTemplate::getStatus, 1)
                 .orderByDesc(FormTemplate::getSource)
                 .orderByAsc(FormTemplate::getId);
+        // 非管理员：只见内置预设模板 + 本人上传的自定义模板
+        if (!admin && username != null && !username.isEmpty()) {
+            q.and(w -> w.eq(FormTemplate::getSource, "preset").or().eq(FormTemplate::getCreatedBy, username));
+        }
         List<FormTemplate> list = templateMapper.selectList(q);
         List<Map<String, Object>> out = new ArrayList<>();
         for (FormTemplate t : list) {
@@ -139,7 +143,7 @@ public class FormAgentService {
     public Map<String, Object> getTemplate(Long id) {
         FormTemplate t = templateMapper.selectById(id);
         if (t == null) return null;
-        for (Map<String, Object> m : listTemplates(true)) {
+        for (Map<String, Object> m : listTemplates(true, null, true)) {
             if (m.get("id").equals(id)) return m;
         }
         return null;
@@ -336,7 +340,8 @@ public class FormAgentService {
             r.setFieldsJson(writeFields(fs));
             r.setTotalCount((int) fs.stream().filter(f -> !isHidden(f)).count());
             r.setFillCount(countFilled(fs));
-            r.setStatus(statusOf(fs));
+            // 显式 status 优先（点「完成」即完成，不被 need 字段空值否决）；未带则按填写完整度推导
+            r.setStatus(body.containsKey("status") ? String.valueOf(body.get("status")) : statusOf(fs));
         } else if (body.containsKey("status")) {
             r.setStatus(String.valueOf(body.get("status")));
         }

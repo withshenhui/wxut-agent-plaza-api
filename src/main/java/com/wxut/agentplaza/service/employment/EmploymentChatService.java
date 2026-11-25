@@ -79,7 +79,7 @@ public class EmploymentChatService {
         }
 
         emitter.send(SseEmitter.event().name("tool")
-                .data("{\"message\":\"正在读取你的学籍信息并匹配岗位…\"}"));
+                .data("{\"message\":\"正在读取你的学籍信息…\"}"));
 
         // 首次使用（无任何意向记录）→ 推送意向引导卡（前端渲染可点选的 chips）
         if (intent == null || intent.isEmpty()) {
@@ -91,26 +91,26 @@ public class EmploymentChatService {
             } catch (Exception ignore) {}
         }
 
+        // 规则匹配（含事实型推荐理由/短板，不调大模型）→ 秒级出卡；卡片由前端在"思考"结束后展示
         List<Map<String, Object>> rec;
         try {
-            rec = employmentService.recommend(studentNo);
+            rec = employmentService.quickRank(studentNo);
         } catch (Exception e) {
             log.warn("就业对话：匹配失败 {}", e.getMessage());
             rec = java.util.Collections.emptyList();
         }
-
-        // 岗位卡片数据（前端以卡片形式呈现，含来源与原文链接）
         try { emitter.send(SseEmitter.event().name("jobs").data(om.writeValueAsString(rec))); } catch (Exception ignore) {}
 
-        String sys = "你是无锡职业技术大学的「智慧就业助手」。依据系统提供的真实推荐结果，用平实、鼓励的书面语气为学生解读推荐。"
-                + "重要：不要再输出岗位表格（岗位清单会以卡片形式展示在下方）；你的回复只需："
-                + "①开头一句总述（结合学生的专业/年级与就业意向）；②按匹配分从高到低逐条解读（每条：岗位名 + 为什么推荐 + 可以补的短板，两三句）；"
-                + "③结尾一句：岗位信息来自公开校招渠道，仅供参考，以招聘单位官方发布为准。"
-                + "严禁编造推荐结果之外的岗位、薪资或要求；数据缺失就如实省略。直接输出正文，不要标题和前言。";
+        String sys = "你是无锡职业技术大学的「智慧就业助手」。请用 2-3 句话给学生一个**总体解读**"
+                + "（结合其专业/年级与求职意向，例如本次匹配方向的大致分布、适合优先看哪类岗位）。"
+                + "重要：**不要罗列岗位名称、不要逐条写推荐理由或短板、不要说\u201c按匹配度呈现前N条\u201d之类的句子**——"
+                + "岗位清单、推荐理由与可补短板已经用卡片形式展示在回复下方，正文重复会显得冗余。"
+                + "最后一句固定为：岗位信息来自公开校招渠道，仅供参考，以招聘单位官方发布为准。"
+                + "严禁编造卡片之外的信息；数据缺失就如实省略。直接输出正文，不要标题。";
         String user = "学生画像：" + om.writeValueAsString(profile)
                 + "\n就业意向：" + om.writeValueAsString(intent == null ? java.util.Collections.emptyMap() : intent)
-                + "\n系统推荐结果（真实岗位，按匹配分排序）：" + om.writeValueAsString(rec)
-                + (rec.isEmpty() ? "\n（推荐结果为空：学生画像缺失或岗位库暂无符合条件岗位，请如实说明并建议其完善意向/稍后再试）" : "");
+                + "\n本次共匹配到 " + rec.size() + " 条岗位（明细已在卡片中展示，请只做总体解读）"
+                + (rec.isEmpty() ? "\n（推荐结果为空：学生画像缺失或岗位库暂无符合条件岗位，请如实说明并建议其完善意向或稍后再试）" : "");
 
         final SseEmitter em = emitter;
         llm.chatStream(sys, user, new java.util.function.Consumer<String>() {

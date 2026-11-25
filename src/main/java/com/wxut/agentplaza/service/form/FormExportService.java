@@ -66,21 +66,26 @@ public class FormExportService {
                 }
             }
 
-            // 本人总结：表1 行3 大格 + 表2 行0 续篇格
+            // 本人总结：完整写入表1 行3 大格（与预览一致，连续不拆分）
             String summary = vals.getOrDefault("本 人 总 结", "");
             List<String> paras = splitParas(summary);
-            int splitAt = Math.max(1, (int) Math.round(paras.size() * SPLIT_RATIO));
             XWPFTableCell sumCell = t1.getRow(3) != null ? t1.getRow(3).getCell(0) : null;
-            XWPFTableCell contCell = t2.getRow(0) != null ? t2.getRow(0).getCell(0) : null;
             if (sumCell != null) {
                 clearKeepFirst(sumCell);
-                for (int i = 0; i < Math.min(splitAt, paras.size()); i++) {
-                    addParaCopyStyle(sumCell, paras.get(i));
+                for (String p : paras) {
+                    addParaCopyStyle(sumCell, p);
                 }
             }
-            if (contCell != null) {
-                fillContCell(contCell, paras.subList(Math.min(splitAt, paras.size()), paras.size()));
+
+            // 与预览版式对齐：删除表2 的续篇大格行，「本人签名：」改为两表之间的右对齐段落，
+            // 表2（意见区）等比放大到与表1 同宽（消除模板固有的 ~2mm 右缘错位）
+            if (t2.getRows().size() > 0 && isContRow(t2.getRow(0))) {
+                t2.removeRow(0);
             }
+            writeSignBetweenTables(doc, t1);
+            alignTableWidth(t1, t2);
+            // 意见区边框统一：模板部分行的列边界是 nil（无线），渲染出断续竖线——统一改 single 实线
+            unifyNilBorders(t2);
 
             // 考核年度替换：模板副标题“（2025年度）”按大模型分析结果替换
             String khnf = "";
@@ -102,6 +107,125 @@ public class FormExportService {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             doc.write(out);
             return out.toByteArray();
+        }
+    }
+
+    /** 续篇行判定：单格且跨度=整表（原模板表2行0 的总结续篇大格） */
+    private boolean isContRow(XWPFTableRow row) {
+        try {
+            return row != null && row.getTableCells().size() == 1
+                    && row.getCtRow().getTcArray().length == 1
+                    && row.getCtRow().getTcArray()[0].getTcPr() != null
+                    && row.getCtRow().getTcArray()[0].getTcPr().getGridSpan() != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** 在表1 与表2 之间写右对齐的「本人签名：」段落（与预览 doc-sign 一致） */
+    private void writeSignBetweenTables(XWPFDocument doc, XWPFTable t1) {
+        try {
+            java.util.List<org.apache.poi.xwpf.usermodel.IBodyElement> els = doc.getBodyElements();
+            int t1Idx = -1;
+            for (int i = 0; i < els.size(); i++) {
+                if (els.get(i) instanceof XWPFTable && (XWPFTable) els.get(i) == t1) { t1Idx = i; break; }
+            }
+            if (t1Idx < 0) return;
+            // 复用表间的既有空段落；没有则在表1 后插入新段
+            XWPFParagraph p = null;
+            for (int j = t1Idx + 1; j < els.size(); j++) {
+                if (els.get(j) instanceof XWPFParagraph) { p = (XWPFParagraph) els.get(j); break; }
+                if (els.get(j) instanceof XWPFTable) break;
+            }
+            if (p == null) {
+                org.apache.xmlbeans.XmlCursor cur = t1.getCTTbl().newCursor();
+                cur.toNextToken();
+                p = doc.insertNewParagraph(cur);
+            }
+            for (int i = p.getRuns().size() - 1; i >= 0; i--) p.removeRun(i);
+            p.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.RIGHT);
+            p.setSpacingBefore(200);
+            XWPFRun r = p.createRun();
+            r.setFontFamily("仿宋_GB2312");
+            r.setFontSize(12);
+            r.setText("本人签名：");
+        } catch (Exception e) {
+            log.warn("智能填报：写签名段落失败: {}", e.getMessage());
+        }
+    }
+
+    /** 表2 等比放大到与表1 同宽（tblGrid + 每行 tcW + tblW，比例保持，消除右缘错位） */
+    private void alignTableWidth(XWPFTable t1, XWPFTable t2) {
+        try {
+            long w1 = tableWidth(t1), w2 = tableWidth(t2);
+            if (w1 <= 0 || w2 <= 0 || w1 == w2) return;
+            double scale = (double) w1 / w2;
+            org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblGrid grid = t2.getCTTbl().getTblGrid();
+            if (grid != null) {
+                for (org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblGridCol col : grid.getGridColList()) {
+                    if (col.isSetW()) col.setW(java.math.BigInteger.valueOf(Math.round(col.getW().longValue() * scale)));
+                }
+            }
+            for (XWPFTableRow row : t2.getRows()) {
+                for (org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTc tc : row.getCtRow().getTcArray()) {
+                    if (tc.getTcPr() != null && tc.getTcPr().isSetTcW() && tc.getTcPr().getTcW().isSetW()) {
+                        tc.getTcPr().getTcW().setW(java.math.BigInteger.valueOf(Math.round(tc.getTcPr().getTcW().getW().longValue() * scale)));
+                    }
+                }
+            }
+            if (t2.getCTTbl().getTblPr() != null && t2.getCTTbl().getTblPr().getTblW() != null
+                    && t2.getCTTbl().getTblPr().getTblW().isSetW()) {
+                t2.getCTTbl().getTblPr().getTblW().setW(java.math.BigInteger.valueOf(w1));
+            }
+            // 左缩进对齐：模板原表2 用 -485 负缩进补偿窄表，扩宽后须与表1 的缩进一致，否则左缘错位 ~10mm
+            org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblPr pr1 = t1.getCTTbl().getTblPr();
+            org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblPr pr2 = t2.getCTTbl().getTblPr();
+            if (pr1 != null && pr2 != null && pr1.getTblInd() != null && pr1.getTblInd().isSetW()) {
+                if (pr2.getTblInd() == null) pr2.addNewTblInd();
+                pr2.getTblInd().setW(pr1.getTblInd().getW());
+                pr2.getTblInd().setType(pr1.getTblInd().getType());
+            }
+        } catch (Exception e) {
+            log.warn("智能填报：对齐表宽失败: {}", e.getMessage());
+        }
+    }
+
+    private long tableWidth(XWPFTable t) {
+        try {
+            org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblGrid grid = t.getCTTbl().getTblGrid();
+            if (grid == null) return 0;
+            long w = 0;
+            for (org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblGridCol col : grid.getGridColList()) {
+                w += col.isSetW() ? col.getW().longValue() : 0;
+            }
+            return w;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * 意见区标签列右边界统一为 single 实线（模板部分行为 nil，渲染出断续竖线似虚线）。
+     * 只动每行第 1 格的 right 边框：内容区内部边界（nil）保持无线的原版视觉，与预览两列布局一致。
+     */
+    private void unifyNilBorders(XWPFTable t) {
+        try {
+            for (XWPFTableRow row : t.getRows()) {
+                org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTc[] tcs = row.getCtRow().getTcArray();
+                if (tcs.length == 0) continue;
+                org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTc first = tcs[0];
+                org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTcPr pr = first.getTcPr();
+                if (pr == null) pr = first.addNewTcPr();
+                org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTcBorders bs =
+                        pr.isSetTcBorders() ? pr.getTcBorders() : pr.addNewTcBorders();
+                org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBorder right =
+                        bs.getRight() != null ? bs.getRight() : bs.addNewRight();
+                right.setVal(org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder.SINGLE);
+                right.setSz(java.math.BigInteger.valueOf(8));
+                right.setColor("auto");
+            }
+        } catch (Exception e) {
+            log.warn("智能填报：统一意见区边框失败: {}", e.getMessage());
         }
     }
 

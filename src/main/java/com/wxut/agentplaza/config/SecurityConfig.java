@@ -53,6 +53,8 @@ public class SecurityConfig {
                 .antMatchers(HttpMethod.GET, "/api/v1/colleges/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/configs/*").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/configs/llm/current-model").permitAll()
+                .antMatchers(HttpMethod.GET, "/api/v1/insight/overview").permitAll()
+                .antMatchers(HttpMethod.POST, "/api/v1/insight/track-chat").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/files/download/**").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/client-builds").permitAll()
                 .antMatchers(HttpMethod.GET, "/api/v1/client-builds/*/download").permitAll()

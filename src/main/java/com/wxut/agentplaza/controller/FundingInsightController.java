@@ -67,10 +67,13 @@ public class FundingInsightController {
     /** 消费时间 zdsdzzsj 为 UTC，比较前 +8 转北京时间（否则窗口边界与"数据截至"日期偏 8h） */
     private static final String BJ = "(c.zdsdzzsj + interval '8 hour')";
 
+    /** 时间窗比较的 sargable 写法：把 +8 小时挪到常量侧（与 BJ 代数等价），使 idx(zdsdzzsj) 可用，避免 960 万行全表扫。参数顺序不变（start,end）。 */
+    private static final String BJ_WIN = "(c.zdsdzzsj >= (?::timestamp - interval '8 hour') AND c.zdsdzzsj < (?::timestamp - interval '8 hour'))";
+
     /** 达标人群（观察窗内食堂就餐 ≥40 顿），?1=start ?2=end */
     private static final String PER_ELIGIBLE =
             "SELECT c.xgh FROM usr_gxai.t_ykt_jkb c" +
-            " WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN +
+            " WHERE " + BJ_WIN + " AND " + CANTEEN +
             " GROUP BY c.xgh HAVING COUNT(*) >= 40";
 
     /** 完整分位 CTE（pct：id/name/college/grade/avg_price/meals/spend/pr），?1=start ?2=end */
@@ -78,7 +81,7 @@ public class FundingInsightController {
             "WITH d AS (SELECT xh, yxmc, njmc, xsxm FROM usr_gxai.t_zhsg_xskq WHERE date = (SELECT max(date) FROM usr_gxai.t_zhsg_xskq))," +
             "per AS (SELECT c.xgh, ROUND(SUM(c.xfzze)/100.0/COUNT(*),2) AS avg_price, COUNT(*) AS meals, ROUND(SUM(c.xfzze)/100.0,2) AS spend" +
             "  FROM usr_gxai.t_ykt_jkb c" +
-            "  WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp AND " + CANTEEN +
+            "  WHERE " + BJ_WIN + " AND " + CANTEEN +
             "  GROUP BY c.xgh HAVING COUNT(*) >= 40)," +
             "pct AS (SELECT per.*, d.xsxm AS name, d.yxmc AS college, d.njmc AS grade," +
             "  PERCENT_RANK() OVER (PARTITION BY d.yxmc, d.njmc ORDER BY per.avg_price) AS pr" +
@@ -101,7 +104,7 @@ public class FundingInsightController {
         r.put("dataDate", end.format(D));
 
         Long active = jt.queryForObject(
-                "SELECT COUNT(DISTINCT c.xgh) FROM usr_gxai.t_ykt_jkb c WHERE " + BJ + " >= ?::timestamp AND " + BJ + " < ?::timestamp",
+                "SELECT COUNT(DISTINCT c.xgh) FROM usr_gxai.t_ykt_jkb c WHERE " + BJ_WIN,
                 Long.class, s, e);
         r.put("active", active);
 
@@ -246,7 +249,7 @@ public class FundingInsightController {
     /* ---------- helpers ---------- */
 
     private LocalDate latestConsumptionDate(JdbcTemplate jt) {
-        String d = jt.queryForObject("SELECT MAX(zdsdzzsj + interval '8 hour')::date::text FROM usr_gxai.t_ykt_jkb", String.class);
+        String d = jt.queryForObject("SELECT (MAX(zdsdzzsj) + interval '8 hour')::date::text FROM usr_gxai.t_ykt_jkb", String.class);
         return d != null ? LocalDate.parse(d) : LocalDate.now().minusDays(1);
     }
 

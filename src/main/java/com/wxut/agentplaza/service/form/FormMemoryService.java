@@ -65,9 +65,14 @@ public class FormMemoryService {
             String src = str(f.get("src"));
             if (!"material".equals(src) && !"need".equals(src)) continue;
             String key = str(f.get("key"));
-            String val = str(f.get("val"));
-            if (key.isEmpty() || val.trim().isEmpty()) continue;
             String label = str(f.get("label"));
+            String val = str(f.get("val"));
+            if (val.trim().isEmpty()) continue;
+            // need 类字段（政治面貌/岗位等级等）key 为空 → 以 label 作稳定标识，否则这些内容永远不会落记忆
+            if (key.isEmpty()) {
+                if (label.trim().isEmpty()) continue;
+                key = "L:" + label;
+            }
             try {
                 FormFieldMemory exist = mapper.selectOne(new LambdaQueryWrapper<FormFieldMemory>()
                         .eq(FormFieldMemory::getUsername, username)
