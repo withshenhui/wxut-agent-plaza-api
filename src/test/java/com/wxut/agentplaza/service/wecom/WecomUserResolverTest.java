@@ -1,7 +1,7 @@
 package com.wxut.agentplaza.service.wecom;
 
 import org.junit.jupiter.api.Test;
-import java.util.Map;
+import java.util.Collections;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -18,7 +18,7 @@ class WecomUserResolverTest {
     @Test
     void 直连未命中回落映射表() {
         WecomUserResolver.Lookup direct = (k) -> null;
-        WecomUserResolver.Lookup mapped = (k) -> Map.of("zhangsan", "2013070832").get(k);
+        WecomUserResolver.Lookup mapped = (k) -> Collections.singletonMap("zhangsan", "2013070832").get(k);
         assertEquals("2013070832", WecomUserResolver.resolveUsername("zhangsan", direct, mapped));
     }
 
