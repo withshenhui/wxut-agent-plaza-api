@@ -20,7 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /** 企微 H5 免密登录：code → 企微 getuserinfo → UserId → 中台账号 → 同一套 JWT。
- *  调试通道 mockUser 仅当命中 sys_config wecom.debug_whitelist 时可用（域名未就绪期联调）。 */
+ *  调试通道 mockUser 仅当 sys_config wecom.debug_enabled=true（严格比较）且命中 wecom.debug_whitelist 时可用（域名未就绪期联调）。 */
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -36,6 +36,9 @@ public class WecomAuthController {
         String mockUser = body.get("mockUser");
         String wecomUserId;
         if (mockUser != null && !mockUser.isEmpty()) {
+            // 调试后门双闸：非生产开关（wecom.debug_enabled 严格等于 true）且命中白名单，缺一即拒
+            boolean debugEnabled = "true".equals(cfg("wecom.debug_enabled", ""));
+            if (!debugEnabled) return Result.error("wecom_debug_denied");
             String wl = cfg("wecom.debug_whitelist", "");
             boolean ok = false;
             for (String w : wl.split(",")) { if (!w.trim().isEmpty() && w.trim().equals(mockUser)) { ok = true; break; } }
@@ -67,19 +70,24 @@ public class WecomAuthController {
     }
 
     private JsonNode getJson(String url) {
+        HttpURLConnection c = null;
         try {
-            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+            c = (HttpURLConnection) new URL(url).openConnection();
             c.setConnectTimeout(5000); c.setReadTimeout(8000);
-            if (c.getResponseCode() != 200) return null;
-            InputStream in = c.getInputStream();
+            int code = c.getResponseCode();
+            InputStream in = code == 200 ? c.getInputStream() : c.getErrorStream();
+            if (in == null) return null;
             ByteArrayOutputStream bo = new ByteArrayOutputStream();
             byte[] buf = new byte[4096]; int n;
             while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
             in.close();
+            if (code != 200) return null;
             return om.readTree(new String(bo.toByteArray(), StandardCharsets.UTF_8));
         } catch (Exception e) {
             log.warn("企微接口调用失败: {}", e.getMessage());
             return null;
+        } finally {
+            if (c != null) c.disconnect();
         }
     }
 
