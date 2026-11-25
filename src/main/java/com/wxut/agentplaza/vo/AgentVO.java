@@ -15,8 +15,11 @@ public class AgentVO {
     /** 推荐问题（|分隔，聊天页 placeholder 轮换） */
     private String suggest;
     private List<String> tags;
+    private Long categoryId;
     private String categoryKey;
     private String categoryName;
+    /** 外链地址（external 类型智能体；企微仿真预览用） */
+    private String externalUrl;
     private Integer isRecommended;
     private Integer isBuilding;
     private Long visitCount;

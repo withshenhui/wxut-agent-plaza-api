@@ -488,11 +488,19 @@ public class DatasetService {
         boolean sharegpt = "sharegpt".equalsIgnoreCase(format);
         boolean jsonl = "jsonl".equalsIgnoreCase(format);
         ArrayNode arr = sharegpt ? OM.createArrayNode() : null;
+        // 标注结果并入导出：item_id -> 最新标注 result（同一 item 多次标注取最新）
+        java.util.Map<Long, String> ann = new java.util.HashMap<>();
         try (Connection c = dataSource.getConnection();
-             PreparedStatement ps = c.prepareStatement("SELECT COALESCE(clean_content,raw_content) AS t FROM ds_item WHERE dataset_id=? AND clean_status<>'dropped' ORDER BY seq")) {
+             PreparedStatement ps = c.prepareStatement("SELECT id,COALESCE(clean_content,raw_content) AS t FROM ds_item WHERE dataset_id=? AND clean_status<>'dropped' ORDER BY seq")) {
+            try (PreparedStatement pa = c.prepareStatement(
+                    "SELECT r.item_id, r.result FROM ds_annot_result r JOIN ds_annot_task t ON r.task_id=t.id WHERE t.dataset_id=? AND r.item_id IS NOT NULL ORDER BY r.id")) {
+                pa.setLong(1, datasetId);
+                try (ResultSet ra = pa.executeQuery()) { while (ra.next()) ann.put(ra.getLong(1), ra.getString(2)); }
+            }
             ps.setLong(1, datasetId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
+                    long itemId = rs.getLong("id");
                     String t = rs.getString("t");
                     String ins = t, out = "";
                     try {
@@ -504,6 +512,9 @@ public class DatasetService {
                             if (!input.isEmpty()) ins = ins + "\n" + input;
                         }
                     } catch (Exception ignore) { }
+                    // 若该条已有标注 → 以标注结果作为 output（覆盖原文里的 output 字段）
+                    String annOut = ann.get(itemId);
+                    if (annOut != null && !annOut.isEmpty()) out = annOut;
                     if (sharegpt) {
                         ObjectNode o = OM.createObjectNode();
                         ArrayNode conv = OM.createArrayNode();

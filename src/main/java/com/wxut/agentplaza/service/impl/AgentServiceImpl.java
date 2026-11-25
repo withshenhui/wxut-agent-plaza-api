@@ -177,6 +177,8 @@ public class AgentServiceImpl implements AgentService {
         vo.setVisitCount(a.getVisitCount());
         vo.setAgentType(a.getAgentType());
         vo.setCollegeId(a.getCollegeId());
+        vo.setCategoryId(a.getCategoryId());
+        vo.setExternalUrl(a.getExternalUrl());
         if (a.getCollegeId() != null) {
             com.wxut.agentplaza.entity.SysCollege c = collegeMapper.selectById(a.getCollegeId());
             vo.setCollegeName(c != null ? c.getName() : null);
